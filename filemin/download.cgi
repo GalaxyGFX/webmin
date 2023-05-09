@@ -9,7 +9,7 @@ use Cwd 'abs_path';
 
 get_paths();
 
-my $file = &simplify_path($cwd.'/'.$in{'file'});
+my $file = &resolve_links(&simplify_path($cwd.'/'.$in{'file'}));
 my $error = 1;
 for $allowed_path (@allowed_paths) {
 	if (&is_under_directory($allowed_path, $file)) {
@@ -25,7 +25,7 @@ print "Content-Disposition: attachment; filename=\"$name$ext\"\n";
 print "Content-Length: $size\n\n";
 open (FILE, "< $file") or die "can't open $file: $!";
 binmode FILE;
-local $/ = \2048000;
+local $/ = \&get_buffer_size_binary();
 while (<FILE>) {
     print $_;
 }

@@ -8,6 +8,7 @@ BEGIN { push(@INC, ".."); };
 use strict;
 use warnings;
 no warnings 'redefine';
+no warnings 'uninitialized';
 use WebminCore;
 &init_config();
 our ($module_root_directory, %text, %gconfig, $root_directory, %config,
@@ -42,8 +43,7 @@ our $primary_port = 80;
 our $webmin_key_email = "jcameron\@webmin.com";
 our $webmin_key_fingerprint = "1719 003A CE3E 5A41 E2DE  70DF D97A 3AE9 11F6 3C51";
 
-our $authentic_key_email = "ilia\@rostovtsev.io";
-our $authentic_key_email_old = "ilia\@rostovtsev.ru";
+our $authentic_key_email = "gpg\@ilia.engineer";
 our $authentic_key_fingerprint = "EC60 F3DA 9CB7 9ADC CF56  0D1F 121E 166D D9C8 21AB";
 
 our $standard_host = $primary_host;
@@ -78,7 +78,7 @@ our $record_login_cmd = "$config_directory/login.pl";
 our $record_logout_cmd = "$config_directory/logout.pl";
 our $record_failed_cmd = "$config_directory/failed.pl";
 
-our $strong_ssl_ciphers = "ECDHE-RSA-AES256-SHA384:AES256-SHA256:AES256-SHA256:RC4:HIGH:MEDIUM:+TLSv1:+TLSv1.1:+TLSv1.2:!MD5:!ADH:!aNULL:!eNULL:!NULL:!DH:!ADH:!EDH:!AESGCM";
+our $strong_ssl_ciphers = "ECDHE-RSA-AES256-SHA384:AES256-SHA256:AES256-SHA256:HIGH:MEDIUM:+TLSv1:+TLSv1.1:+TLSv1.2:!MD5:!ADH:!aNULL:!eNULL:!NULL:!DH:!ADH:!EDH:!AESGCM";
 our $pfs_ssl_ciphers = "EECDH+AES:EDH+AES:-SHA1:EECDH+RC4:EDH+RC4:RC4-SHA:EECDH+AES256:EDH+AES256:AES256-SHA:!aNULL:!eNULL:!EXP:!LOW:!MD5";
 
 our $newmodule_users_file = "$config_directory/newmodules";
@@ -88,6 +88,8 @@ our $first_install_file = "$config_directory/first-install";
 our $hidden_announce_file = "$module_config_directory/announce-hidden";
 
 our $postpone_reboot_required = "$module_var_directory/postpone-reboot-required";
+
+our $realos_cache_file = "$module_var_directory/realos-cache";
 
 our $password_change_mod = "passwd";
 our $password_change_path = "/".$password_change_mod."/change_passwd.cgi";
@@ -228,7 +230,7 @@ if ($type eq 'rpm' && $file =~ /\.rpm$/i &&
 		return $text{'install_erpm'};
 		}
 	$redirect_to = $name = $3;
-	$out = &backquote_logged("rpm -U \"$file\" 2>&1");
+	$out = &backquote_logged("rpm -Uv \"$file\" 2>&1");
 	if ($?) {
 		unlink($file) if ($need_unlink);
 		return &text('install_eirpm', "<tt>$out</tt>");
@@ -639,8 +641,7 @@ my ($ok, $err) = &import_gnupg_key(
 return ($ok, $err) if ($ok);
 
 ($ok, $err) = &import_gnupg_key(
-	$authentic_key_email."|".$authentic_key_email_old,
-	$authentic_key_fingerprint,
+	$authentic_key_email, $authentic_key_fingerprint,
 	"$root_directory/authentic-theme/THEME.pgp");
 return ($ok, $err) if ($ok);
 
@@ -661,13 +662,24 @@ return (0) if (!-r $path);
 my @keys = &list_keys();
 foreach my $k (@keys) {
 	my $fp = &key_fingerprint($k);
-	return ( 0 ) if ($k->{'email'}->[0] =~ /^$email$/ &&
-		         $fp && $fp eq $finger);
+	# Key already been imported with correct contact
+	if ($k->{'email'}->[0] eq $email && $fp && $fp eq $finger) {
+		return (0);
+		}
+	# Key been imported before but contact changed, delete first
+	elsif ($k->{'email'}->[0] ne $email && $fp && $fp eq $finger) {
+		my $lfinger = $finger;
+		$lfinger =~ s/\s+//g;
+		my $out = &backquote_logged("$gpgpath --batch --delete-key ".quotemeta($lfinger)." 2>&1");
+		if ($?) {
+			return (2, $out);
+			}
+		}
 	}
 
 # Import it if not
 &list_keys();
-my $out = &backquote_logged("$gpgpath --import $path 2>&1");
+my $out = &backquote_logged("$gpgpath --import ".quotemeta($path)." 2>&1");
 if ($?) {
 	return (2, $out);
 	}
@@ -1137,21 +1149,36 @@ my %miniserv;
 &get_miniserv_config(\%miniserv);
 &load_theme_library();	# So that UI functions work
 
-# Need OS upgrade
-my %realos = &detect_operating_system(undef, 1);
-if (($realos{'os_version'} ne $gconfig{'os_version'} ||
-     $realos{'real_os_version'} ne $gconfig{'real_os_version'} ||
-     $realos{'os_type'} ne $gconfig{'os_type'}) &&
-    $realos{'os_version'} && $realos{'os_type'} &&
-    &foreign_available("webmin")) {
+# Need OS upgrade, but only once per day
+# XXX use a cache
+my $now = time();
+if (&foreign_available("webmin")) {
+	my %realos;
+	my @st = stat($realos_cache_file);
+	if (!@st || $now - $st[9] > 24*60*60) {
+		%realos = &detect_operating_system(undef, 1);
+		&write_file($realos_cache_file, \%realos);
+		}
+	else {
+		&read_file($realos_cache_file, \%realos);
+		}
+	if (($realos{'os_version'} ne $gconfig{'os_version'} ||
+	     $realos{'real_os_version'} ne $gconfig{'real_os_version'} ||
+	     $realos{'os_type'} ne $gconfig{'os_type'}) &&
+	    $realos{'os_version'} && $realos{'os_type'} &&
+	    &foreign_available("webmin")) {
 
-	# Tell the user that OS version was updated
-	push(@notifs,
-	    &ui_form_start("@{[&get_webprefix()]}/webmin/fix_os.cgi").
-	    &text('os_incorrect', $realos{'real_os_type'},
-                              $realos{'real_os_version'})."<p>\n".
-	    &ui_form_end([ [ undef, $text{'os_fix'} ] ])
-	    );
+		# Tell the user that OS version was updated
+		push(@notifs,
+		    &ui_form_start("@{[&get_webprefix()]}/webmin/fix_os.cgi").
+		    &text('os_incorrect',
+			  $realos{'real_os_type'},
+			  $realos{'real_os_version'}).
+		    &show_os_release_notes($realos{'real_os_version'}).
+		    "<p>\n".
+		    &ui_form_end([ [ undef, $text{'os_fix'} ] ])
+		    );
+		}
 	}
 
 # Password close to expiry
@@ -1216,21 +1243,16 @@ if (&foreign_check("acl")) {
 	}
 
 # New Webmin version is available, but only once per day
-my $now = time();
 my %raccess = &get_module_acl('root');
-my %rdisallow = map { $_, 1 } split(/\s+/, $raccess{'disallow'});
+my %rdisallow = map { $_, 1 } split(/\s+/, $raccess{'disallow'} || "");
 my %access = &get_module_acl();
-my %disallow = map { $_, 1 } split(/\s+/, $access{'disallow'});
-my %allow = map { $_, 1 } split(/\s+/, $access{'allow'});
-my %role = map { $_, 1 } split(/\s+/, $access{'role'});
-if (&foreign_available($module_name) && !$gconfig{'nowebminup'} && !$noupdates &&
-    (
-        $allow{'upgrade'} || $role{'upgrader'} ||
-        (!$disallow{'upgrade'} && !$rdisallow{'upgrade'})
-    )
-) {
+my %disallow = map { $_, 1 } split(/\s+/, $access{'disallow'} || "");
+my %allow = map { $_, 1 } split(/\s+/, $access{'allow'} || "");
+if (&foreign_available($module_name) && !$gconfig{'nowebminup'} &&
+    !$noupdates && ($allow{'upgrade'} ||
+		    (!$disallow{'upgrade'} && !$rdisallow{'upgrade'}))) {
 	if (!$config{'last_version_check'} ||
-         $now - $config{'last_version_check'} > 24*60*60) {
+	    $now - $config{'last_version_check'} > 24*60*60) {
 		# Cached last version has expired .. re-fetch
 		my ($ok, $version, $release) = &get_latest_webmin_version();
 		if ($ok) {
@@ -1242,13 +1264,12 @@ if (&foreign_available($module_name) && !$gconfig{'nowebminup'} && !$noupdates &
 			&save_module_config();
 			}
 		}
-	my $ver = &get_webmin_version();
-	my $rel = &get_webmin_version_release();
-	my $full = $ver.($rel ? "-".$rel : "");
-	if ($config{'last_version_number'} &&
-	    ($config{'last_version_number'} > $ver ||
-	     $config{'last_version_number'} == $ver &&
-	     $config{'last_version_release'} > $rel)) {
+	my $minor_release =
+		$config{'last_version_release'} &&
+		$config{'last_version_release'} >= 2;
+	my $full = &get_webmin_full_version();
+	if ($config{'last_version_full'} &&
+	    &compare_version_numbers($config{'last_version_full'}, $full) > 0) {
 		# New version is out there .. offer to upgrade
 		my $mode = &get_install_type();
 		my $checksig = 0;
@@ -1258,14 +1279,20 @@ if (&foreign_available($module_name) && !$gconfig{'nowebminup'} && !$noupdates &
 				$checksig = 1;
 				}
 			}
+		my $release_notes_link = " ".
+		   &ui_link("https://github.com/webmin/webmin/releases/tag/".
+		     	    "$config{'last_version_number'}",
+	                    $text{'os_release_notes'}, undef,
+	                    'target="_blank" data-link-external="after"').".";
+		# $release_notes_link = "" if ($minor_release);
 		push(@notifs,
 		     &ui_form_start("@{[&get_webprefix()]}/webmin/upgrade.cgi",
 				    "form-data").
 		     &ui_hidden("source", 2).
 		     &ui_hidden("sig", $checksig).
 		     &ui_hidden("mode", $mode).
-		     &text('notif_upgrade', $config{'last_version_full'},
-			   $full)."<p>\n".
+		     &text('notif_upgrade', $config{'last_version_full'}, $full).
+		     "$release_notes_link<p>\n".
 		     &ui_form_end([ [ undef, $text{'notif_upgradeok'} ] ]));
 		}
 	}
@@ -1284,12 +1311,12 @@ if (&foreign_check("package-updates") && &foreign_available("init")) {
 				}
 			}
 		}
-	if (&package_updates::check_reboot_required() && $allow_reboot_required) {
+	if ($allow_reboot_required && &package_updates::check_reboot_required()) {
 		push(@notifs,
 			&ui_form_start("@{[&get_webprefix()]}/init/reboot.cgi").
 			$text{'notif_reboot'}."<p>\n".
 			&ui_form_end([ [ undef, $text{'notif_rebootok'} ],
-					[ 'removenotify', $text{'alert_hide'} ] ]));
+				       [ 'removenotify', $text{'alert_hide'} ] ]));
 		}
 	}
 
@@ -1777,6 +1804,11 @@ Output a page with header and footer about Webmin needing to restart.
 =cut
 sub show_restart_page
 {
+if (!$gconfig{'restart_async'}) {
+	&restart_miniserv();
+	&redirect("");
+	return;
+	}
 my ($title, $msg) = @_;
 $title ||= $text{'restart_title'};
 $msg ||= $text{'restart_done'};
@@ -1988,13 +2020,19 @@ my %in = %$in;
 
 # Validate inputs
 my @cns;
-if (!$in{'commonName_def'}) {
+if ($in{'commonName_def'}) {
+	@cns = ( &get_system_hostname(0), 
+		 &get_system_hostname(1),
+		 "localhost" );
+	}
+else {
 	@cns = split(/\s+/, $in{'commonName'});
 	@cns || return $text{'newkey_ecns'};
 	foreach my $cn (@cns) {
 		$cn =~ /^[A-Za-z0-9\.\-\*]+$/ || return $text{'newkey_ecn'};
 		}
 	}
+@cns = &unique(@cns);
 $in{'size_def'} || $in{'size'} =~ /^\d+$/ || return $text{'newkey_esize'};
 $in{'days'} =~ /^\d+$/ || return $text{'newkey_edays'};
 $in{'countryName'} =~ /^\S\S$/ || return $text{'newkey_ecountry'};
@@ -2021,9 +2059,9 @@ my $subject = &build_ssl_subject($in{'countryName'},
 				 $in{'emailAddress'});
 my $conf = &build_ssl_config(\@cns);
 my $out = &backquote_logged(
-	"$cmd req -newkey rsa:$size -x509 -sha256 -nodes -out $ctemp -keyout $ktemp ".
+	"$cmd req -newkey rsa:$size -x509 -sha256 -nodes -out ".quotemeta($ctemp)." -keyout ".quotemeta($ktemp)." ".
 	"-days ".quotemeta($in{'days'})." -subj ".quotemeta($subject)." ".
-	"-config $conf -reqexts v3_req -utf8 2>&1");
+	"-config ".quotemeta($conf)." -reqexts v3_req -utf8 2>&1");
 if (!-r $ctemp || !-r $ktemp || $?) {
 	return $text{'newkey_essl'}."<br>"."<pre>".&html_escape($out)."</pre>";
 	}
@@ -2169,24 +2207,35 @@ my $lref = &read_file_lines($temp);
 my $i = 0;
 my $found_req = 0;
 my $found_ca = 0;
+my $found_alt = 0;
 my $altline = "subjectAltName=".join(",", map { "DNS:$_" } @cns);
 foreach my $l (@$lref) {
-	if ($l =~ /^\s*\[\s*v3_req\s*\]/ && !$found_req) {
-		splice(@$lref, $i+1, 0, $altline);
-		$found_req = 1;
-		}
-	if ($l =~ /^\s*\[\s*v3_ca\s*\]/ && !$found_ca) {
-		splice(@$lref, $i+1, 0, $altline);
-		$found_ca = 1;
+	if ($l =~ /^\s*subjectAltName\s*=/) {
+		$lref->[$i] = $altline;
+		$found_alt++;
 		}
 	$i++;
 	}
-# If v3_req or v3_ca sections are missing, add at end
-if (!$found_req) {
-	push(@$lref, "[ v3_req ]", $altline);
-	}
-if (!$found_ca) {
-	push(@$lref, "[ v3_ca ]", $altline);
+if (!$found_alt) {
+	$i = 0;
+	foreach my $l (@$lref) {
+		if ($l =~ /^\s*\[\s*v3_req\s*\]/ && !$found_req) {
+			splice(@$lref, $i+1, 0, $altline);
+			$found_req = 1;
+			}
+		if ($l =~ /^\s*\[\s*v3_ca\s*\]/ && !$found_ca) {
+			splice(@$lref, $i+1, 0, $altline);
+			$found_ca = 1;
+			}
+		$i++;
+		}
+	# If v3_req or v3_ca sections are missing, add at end
+	if (!$found_req) {
+		push(@$lref, "[ v3_req ]", $altline);
+		}
+	if (!$found_ca) {
+		push(@$lref, "[ v3_ca ]", $altline);
+		}
 	}
 
 # Add copyall line if needed
@@ -2232,7 +2281,7 @@ my $subject = &build_ssl_subject($country, $state, $city, $org, $orgunit, $cn,$e
 my $conf = &build_ssl_config($cn);
 my $ctypeflag = $ctype eq "sha2" ? "-sha256" : "";
 my $out = &backquote_command(
-	"$cmd req -new -key $ktemp -out $ctemp $ctypeflag ".
+	"$cmd req -new -key ".quotemeta($ktemp)." -out $ctemp $ctypeflag ".
 	"-subj ".quotemeta($subject)." -config $conf -reqexts v3_req ".
 	"-utf8 2>&1");
 if (!-r $ctemp || $?) {
@@ -2539,16 +2588,16 @@ my %miniserv;
 &get_miniserv_config(\%miniserv);
 
 &lock_file($miniserv{'keyfile'});
-&copy_source_dest($key, $miniserv{'keyfile'});
+&copy_source_dest($key, $miniserv{'keyfile'}, 1);
 &unlock_file($miniserv{'keyfile'});
 
 &lock_file($miniserv{'certfile'});
-&copy_source_dest($cert, $miniserv{'certfile'});
+&copy_source_dest($cert, $miniserv{'certfile'}, 1);
 &unlock_file($miniserv{'certfile'});
 
 if ($chain) {
 	&lock_file($miniserv{'extracas'});
-	&copy_source_dest($chain, $miniserv{'extracas'});
+	&copy_source_dest($chain, $miniserv{'extracas'}, 1);
 	&unlock_file($miniserv{'extracas'});
 	}
 else {
@@ -2576,6 +2625,44 @@ foreach my $p ($vconfig{'openssl_cnf'},		# Virtualmin module config
 	return $p if ($p && -r $p);
 	}
 return undef;
+}
+
+# show_os_release_notes()
+# Returns a link with `Release notes` after OS
+# upgrade, within alert displayed on the Dashboard
+sub show_os_release_notes
+{
+my ($ver) = @_;
+return if (!$ver);
+my $basever = $ver;
+($basever) = $basever =~ /(\d+)/;
+return if (!$basever);
+my $link;
+my $os = $gconfig{'real_os_type'};
+return if (!$os);
+my $link_tag = 'target="_blank" data-link-external="after"';
+# Ubuntu release notes
+if ($os =~ /ubuntu/i &&
+    $ver =~ /\d+\.04/ &&
+    $basever >= 18) {
+	my $ubuntuver = $ver;
+	$ubuntuver =~ s/\./-/g;
+	$link = &ui_link("https://fridge.ubuntu.com/".
+	                    "ubuntu-$ubuntuver-lts-released",
+	                 $text{'os_release_notes'}, undef, $link_tag);
+	}
+# AlmaLinux release notes
+if ($os =~ /alma/i && $basever >= 8) {
+	$link = &ui_link("https://wiki.almalinux.org/release-notes/$ver.html",
+	                 $text{'os_release_notes'}, undef, $link_tag);
+	}
+# Rocky linux release notes
+if ($os =~ /rocky/i && $basever >= 8) {
+	$ver =~ s/\./_/;
+	$link = &ui_link("https://docs.rockylinux.org/release_notes/$ver",
+	                 $text{'os_release_notes'}, undef, $link_tag);
+	}
+return ". $link" if ($link);
 }
 
 1;

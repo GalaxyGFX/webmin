@@ -145,8 +145,8 @@ else {
 	if (!$config{"direct${ipvx}"}) {
 		my $err = &validate_iptables_config();
 		if ($err) {
-			print "<b>",&text('index_evalid',
-					  &html_escape($err)),"</b><p>\n";
+			print "<b><font color=red>",&text('index_evalid',
+				  &html_escape($err)),"</font></b><p>\n";
 			}
 		}
 
@@ -213,7 +213,7 @@ else {
                 if ($config{'filter_chain'}) {
                     foreach $filter (split(',', $config{'filter_chain'})) {
                         if($c =~ /^$filter$/) {
-				# not managed by firewall, do not dispaly or modify
+				# not managed by firewall, do not display or modify
                                 print "<em>".$text{'index_filter_chain'}."</em><br>\n";
                                 next CHAIN;
                             }
@@ -433,29 +433,36 @@ else {
 
 	# Show ipset overview if ipsets are availibe
         # may need to check if they are used by firewall rules
-	@ipsets  = &get_ipsets_active();
+	@ipsets = &get_ipsets_active();
 	if (@ipsets) {	
-	    print &ui_hr();
-	    print "<b>$text{'index_ipset_title'}</b>";
-	    # Generate the header
-	    local (@hcols, @tds);
-	    push(@hcols, $text{'index_ipset'}, "<b>$text{'index_ipset_name'}</b>&nbsp;&nbsp;", $text{'index_ipset_type'},
-				 $text{'index_ipset_elem'}, $text{'index_ipset_maxe'}, $text{'index_ipset_size'});
-	    push(@tds, "", "", "", "", "");
-	    print &ui_columns_start(\@hcols, 100, 0, \@tds);
-	    # Generate a row for each rule
-	    foreach $s (@ipsets) {
-		local @cols;
-		local @h= split(/ /, $s->{'Header'});
-		# print matching pínet version
-		if ($h[1] =~ /inet${ipvx}$/) {
-			push(@cols, "&nbsp;&nbsp;$h[0] $h[1]", "&nbsp;&nbsp;<b>$s->{'Name'}</b>",
-					$s->{'Type'}, $s->{'Number'}, $h[5], $s->{'Size'});
-			print &ui_columns_row(\@cols, \@tds);
+		print &ui_hr();
+		print "<b>$text{'index_ipset_title'}</b>";
+
+		# Generate the header
+		@hcols = ( $text{'index_ipset'},
+			   $text{'index_ipset_name'},
+			   $text{'index_ipset_type'},
+			   $text{'index_ipset_elem'},
+			   $text{'index_ipset_maxe'},
+			   $text{'index_ipset_size'} );
+		print &ui_columns_start(\@hcols, 100, 0);
+
+		# Generate a row for each rule
+		foreach $s (@ipsets) {
+			my @h = split(/ /, $s->{'Header'});
+			# print matching pínet version
+			if ($h[1] =~ /inet${ipvx}$/) {
+				my @cols = ( "$h[0] $h[1]",
+					     $s->{'Name'},
+					     $s->{'Type'},
+					     $s->{'Number'} || 0,
+					     $h[5],
+					     $s->{'Size'} );
+				print &ui_columns_row(\@cols);
+				}
 			}
-                }
-	    print &ui_columns_end();
-	    }
+		print &ui_columns_end();
+		}
 
 	# Display buttons for applying and un-applying the configuration,
 	# and for creating an init script if possible
@@ -523,30 +530,22 @@ else {
 
 &ui_print_footer("/", $text{'index'});
 
+# external_firewall_message(&tables)
 sub external_firewall_message
-   {
-	local $fwname="";
-	local $fwconfig="@{[&get_webprefix()]}/config.cgi?firewall";
+{
+my ($tables) = @_;
+my $fwconfig = "@{[&get_webprefix()]}/config.cgi?firewall";
+my @fwname = &external_firewall_list($tables);
 
-	# detect external firewalls
-	local ($filter) = grep { $_->{'name'} eq 'filter' } @{$_[0]};
-	if ($filter->{'defaults'}->{'shorewall'}) {
-        $fwname.='shorewall ';
-        	}
-	if ($filter->{'defaults'}->{'INPUT_ZONES'}) {
-        	$fwname.='firewalld ';
-        	}
-	if ($filter->{'defaults'} =~ /^f2b-|^fail2ban-/ && !$config{'filter_chain'} ) {
-        	$fwname.='fail2ban ';
-        	}
-	# warning about not using direct
-	if($fwname && !$config{"direct${ipvx}"}) {
-                print "<b><center>",
-                &text('index_filter_nodirect', $fwconfig),
-                "</b></center><p>\n";
-           }
-        # alert about the detected firewall modules
-        foreach my $word (split ' ', $fwname) {
-                print ui_alert_box(&text("index_$word", "@{[&get_webprefix()]}/$word/", $fwconfig), 'warn');
-                }
-   }
+# Warning about not using direct
+if(@fwname && !$config{"direct${ipvx}"}) {
+	print "<b><center>",
+		&text('index_filter_nodirect', $fwconfig),
+		"</b></center><p>\n";
+	}
+
+# Alert about the detected firewall modules
+foreach my $word (@fwname) {
+	print ui_alert_box(&text("index_$word", "@{[&get_webprefix()]}/$word/", $fwconfig), 'warn');
+	}
+}

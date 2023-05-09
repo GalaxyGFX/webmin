@@ -139,10 +139,6 @@ ui_sizeusers=Veľkosť voliča viacerých užívateľov
 ui_sizemodule=Veľkosť modulového voliča
 ui_edbwidth=Chýbajúca alebo neplatná šírka voliča okna
 ui_edbheight=Chýbajúca alebo neplatná výška voliča okna
-ui_dateformat_dd/mon/yyyy=dd/mesiac/rrrr (napríklad 16/Sep/2001)
-ui_dateformat_dd/mm/yyyy=dd/mm/rrrr (napríklad 16/09/2001)
-ui_dateformat_mm/dd/yyyy=mm/dd/rrrr (napríklad 09/16/2001)
-ui_dateformat_yyyy/mm/dd=rrrr/mm/dd (napríklad 2001/09/16)
 
 mods_title=Moduly Webminu
 mods_desc1=Moduly Webminu môžu byť pridané po inštalácii v nasledujúcom formulári. Moduly sú väčšinou distribuované ako <tt>.wbm</tt> súbory. Moduly taktiež môžu byť inštalované z RPM súborov.
@@ -250,9 +246,6 @@ os_value=Hodnota
 os_eversion=Chýbajúca verzia operačného systému
 os_eiversion=Chýbajúca interná verzia operačného systému
 
-lang_title=Jazyk
-lang_title2=Jazyk používaný Webminom
-lang_lang=Zobrazuj v jazyku
 lang_intro=Táto stránka Vám dovolí vybrať si jazyk pre titulky, otázky a správy Webminu
 lang_ok=Zmeniť jazyk
 lang_accept=Použiť jazyk špecifikovaný prehliadačom?
@@ -274,8 +267,8 @@ ssl_key=Súbor súkromného kľúča
 ssl_cert=Certifikát
 ssl_cert_def=Rovnaký súbor ako súkromný kľúč
 ssl_cert_oth=Oddelené súbory
-ssl_redirect=Presmerovať nezabezpečené požiadavky na zabezpečené?
 ssl_extracas=Ďaľšie certifikačné súbory<br>
+ssl_redirect=Presmerovať nezabezpečené požiadavky na zabezpečené?
 ssl_err=Zlyhalo uloženie SSL nastavení
 ssl_ekey=Súbor SSL certifikátu $1 neexistuje alebo nebsahuje PEM kľúč
 ssl_ecert=Súbor SSL certifikátu $1 neexistuje alebo nebsahuje PEM certifikát
@@ -370,10 +363,6 @@ upgrade_egzip=Nebolo možné rozbaliť súbor : $1
 upgrade_etar=Neplatný tar súbor Webminu
 upgrade_euntar=Nebolo možné rozbaliť súbor : $1
 upgrade_emod=Súbor je modulom, nie aktualizáciou Webminu. Môžete použiť <a href='$1'>Webmin Moduly</a> na inštaláciu
-upgrade_setup=Spúšťam skript setup.sh pre aktualizáciu Webminu... Vyčkajte chvíľu na jeho dokončenie.
-upgrade_setuprpm=Spúšťam RPM pre aktualizáciu Webminu .. Vyčkajte chvíľu na jeho dokončenie.
-upgrade_setupdeb=Spúšťam DPKG na aktualizáciu Webminu ... Prosím čakajte minútu kým sa dokončí predtým než budete pokračovať.
-upgrade_setuppackage=Spúšťam skript pkgadd pre aktualizáciu Webminu... Vyčkajte chvíľu na jeho dokončenie.
 upgrade_esolaris=Webmin aktualizácia na Solarise nefunguje, budete musieť aktualizovať ručne.
 upgrade_eusermin=Súbor je Usermin verzia $1, a nie aktualizácia Webminu.
 upgrade_updates=Pre túto novú verziu Webminu je k dispozícii $1 aktulizácií. <a href='$2'>Kliknite tu</a> pre ich automatické stiahnutie a inštaláciu.
@@ -488,8 +477,6 @@ session_eextauth=Chýbajúci alebo nesprávny externý overovací program
 session_pmode0=Vždy zamietnuť užívateľov s expirovanými heslami
 session_pmode1=Vždy povoliť užívateľov s expirovanými heslami
 session_pmode2=Požiadať užívateľov s expirovanými heslami o zadanie nového hesla
-session_md5off=Použiť štandardnú Unixovú funkciu <tt>crypt</tt> pre šifrovanie Webminovský hesiel
-session_md5on=Použiť MD5 pre šifrovanie Webminovských hesiel (povoľuje dlhé heslá)
 
 assignment_title=Zmeniť organizáciu modulov
 assignment_header=Priradenie kategórii modulom

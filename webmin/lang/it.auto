@@ -2,9 +2,6 @@ index_refresh=Aggiorna i moduli
 index_refreshmsg=Ricontrolla tutti i moduli Webmin per i server installati e aggiorna quelli che appaiono nella categoria "Moduli non utilizzati".
 
 access_local=Includi la rete locale nell'elenco
-access_elibwrap=Il controllo dell'accesso IP tramite TCP-wrapper non è disponibile, poiché il modulo $1 Perl non è installato.
-access_libwrapcpan=<a href='$1'>Fai clic qui</a> per fare in modo che Webmin installi automaticamente il modulo Perl mancante.
-
 access_eip6='$1' non è un IPv6 completo o un indirizzo di rete
 access_ecidr6='$1' non è una dimensione di rete IPv6 valida
 access_ecidr8=La dimensione della rete IPv6 '$1' deve essere divisibile per 8
@@ -22,6 +19,10 @@ bind_maxconns_per_net=Numero massimo di connessioni simultanee per rete
 bind_emaxconns=Il numero massimo di connessioni simultanee deve essere un numero maggiore di 1
 bind_emaxconns_per_ip=Il numero massimo di connessioni simultanee per IP deve essere un numero maggiore di 1
 bind_emaxconns_per_net=Il numero massimo di connessioni simultanee per rete deve essere un numero maggiore di 1
+bind_maxlifetime=Durata massima del processo Webmin
+bind_maxlifetime_def=Illimitato
+bind_maxlifetime_secs=secondi
+bind_emaxlifetime=La durata massima del processo deve essere un numero maggiore di 60 secondi
 
 log_global=&lt;Azioni globali&gt;
 log_sched=Registra le funzioni pianificate?
@@ -38,11 +39,20 @@ mods_checksig=Controlla il file della firma per i moduli scaricati?
 
 os_perllib=Percorsi di libreria Perl extra
 os_incorrect=Il sistema operativo $1èstato aggiornato alla versione $2
+os_release_notes=Note di rilascio
 os_usermin=Aggiorna anche il sistema operativo Usermin
+
+lang_title=Lingua e località
+lang_title2=Webmin Lingua e Locale
+lang_lang=Lingua
+lang_locale=Locale
+lang_dateformat=Formato di visualizzazione delle date
+lang_dateformat_dd/mon/yyyy=gg/lunedì/aaaa (ovvero 16/set/2001)
 
 ssl_deny=Versioni del protocollo SSL da rifiutare
 ssl_compression=Consenti connessioni SSL compresse?
 ssl_honorcipherorder=Forzare l'uso dell'ordine di cifratura definito dal server?
+ssl_hsts=Applica SSL con intestazione HSTS
 ssl_extracasdef=Come le impostazioni SSL globali
 ssl_extracasnone=Nessuno per questo indirizzo IP
 ssl_extracasbelow=Inserito sotto. ..
@@ -70,6 +80,7 @@ ssl_already2=Richiesta di firma del certificato generata in precedenza :
 ssl_letsdesc=Let's Encrypt è un'autorità di certificazione libera, automatizzata e aperta che può essere utilizzata per generare un certificato SSL per l'utilizzo da parte di Webmin.
 ssl_letserr=Sfortunatamente, Let's Encrypt non può essere usato sul tuo sistema: $1.
 ssl_letserr2=In alternativa, controlla la pagina <a href='$1'>configurazione del modulo</a> per assicurarti di utilizzare il percorso corretto al comando <tt>letsencrypt</tt>.
+
 ssl_letsdesc2=Questa pagina può essere utilizzata per richiedere un nuovo certificato, che sovrascriverà qualsiasi altro attualmente configurato in Webmin. Tuttavia, il servizio Let's Encrypt richiede che la proprietà del dominio del certificato sia convalidata controllando che questo sistema ospita il sito Web per il dominio. Questo viene fatto inserendo un piccolo file temporaneo nella directory dei documenti del sito Web.
 ssl_letsheader=Opzioni per il nuovo certificato SSL
 ssl_letsdoms=Nomi host per certificato
@@ -98,6 +109,10 @@ newcsr_ok2=Questo CSR deve essere inviato a un'autorità di firma, che restituir
 startpage_webminup=Mostra gli aggiornamenti di Webmin nella pagina Informazioni di sistema?
 startpage_moduleup=Mostra gli aggiornamenti del modulo nella pagina Informazioni di sistema?
 
+upgrade_setup=Esecuzione dello script <tt>setup.sh</tt> per aggiornare Webmin ..
+upgrade_setuprpm=Eseguire <tt>RPM</tt> per aggiornare Webmin ..
+upgrade_setupdeb=Eseguire <tt>DPKG</tt> per aggiornare Webmin ..
+upgrade_setuppackage=Eseguire <tt>pkgadd</tt> per aggiornare Webmin ..
 upgrade_eportage=La funzione di aggiornamento di Webmin attualmente non funziona se è stato installato da un pacchetto Portage. Aggiorna invece utilizzando gli strumenti di Portage.
 upgrade_src=Aggiorna Webmin da
 upgrade_opts=Opzioni di aggiornamento
@@ -130,9 +145,13 @@ session_cmddef0=Cambia password con comando:
 session_ecmd=Comando di modifica password mancante o non valido
 session_banner=Banner pre-login
 session_md5=Formato di hashing della password di Webmin
-session_sha512=Usa la crittografia SHA512
-session_emd5mod=La crittografia MD5 non può essere utilizzata, poiché il modulo Perl $1 non è installato.
-session_esha512mod=La crittografia SHA512 non può essere utilizzata, poiché il modulo Perl $1 non è installato.
+session_md5off=Determina automaticamente
+session_md5on=Usa il formato hash <tt>MD5</tt>
+session_sha512=Usa il formato hash <tt>SHA512</tt>
+session_yescrypt=Usa il formato hash <tt>yescrypt</tt>
+session_emd5mod=Impossibile utilizzare il formato hash MD5, poiché il modulo Perl $1 non è installato
+session_esha512mod=Impossibile utilizzare il formato hash SHA512, poiché il modulo Perl $1 non è installato
+session_eyescrypt=Il formato hash yescrypt non può essere utilizzato, poiché il modulo Perl $1 non è installato
 session_blocklock=Blocca anche gli utenti con accessi non riusciti
 session_passapi=Abilitare l'API per la modifica della password remota?
 session_passapi0=API disabilitata
@@ -185,6 +204,7 @@ advanced_precache0=Nessuna
 advanced_precache1=File di testo in lingua inglese
 advanced_precache2=File corrispondenti ai modelli di shell $1
 advanced_eprecache=Elenco mancante di modelli di shell da pre-cache
+advanced_etempallowed=La directory dei file temporanei $1 è una directory di sistema
 advanced_chattr=Consentire la modifica di file immutabili?
 advanced_sclass=Classe IO per lavori programmati
 advanced_sprio=Priorità di I/O per i lavori programmati
@@ -327,6 +347,16 @@ web_expirespaths=Tempi cache lato client in base al percorso URL
 web_expirespath=Espressione regolare del percorso
 web_expirestime=Tempo di cache in secondi
 web_eexpires2=Tempo cache lato client mancante o non numerico nella riga $1
+web_rediruurl=URL di reindirizzamento dell'interruttore dopo l'accesso
+web_redirdesc=Sostituzioni URL di reindirizzamento interno
+web_eredirurl='$1' contiene spazi e non è un URL valido
+web_redirhost=Reindirizzamento host
+web_eredirhost='$1' non è un nome host valido
+web_redirport=Porta di reindirizzamento
+web_redirpref=Prefisso di reindirizzamento
+web_eredirpref=Il prefisso deve iniziare con una barra
+web_eredirpref2=Il prefisso non deve contenere spazi
+web_redirssl=Reindirizza SSL
 
 webmincron_title=Funzioni pianificate di Webmin
 webmincron_emodule=Il modulo Webmin Cron Jobs non è installato!

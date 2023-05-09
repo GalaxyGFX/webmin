@@ -124,7 +124,7 @@ foreach my $d (&get_httpd_defines()) {
 		}
 	}
 while($line = <$fh>) {
-	chop;
+	$line =~ s/\r|\n//g;
 	$line =~ s/^\s*#.*$//g;
 	if ($line =~ /^\s*<\/(\S+)\s*(.*)>/) {
 		# end of a container directive. This can only happen in a
@@ -144,6 +144,11 @@ while($line = <$fh>) {
 		$altmod =~ s/^(\S+)_module$/mod_$1/g;
 		local $mpmmod = $mod;
 		$mpmmod =~ s/^mpm_//; $mpmmod =~ s/_module$//;
+		if ($mod eq "prefork") {
+			# Special case for all the prefork aliases
+			($mod, $altmod, $mpmmod) = ("mod_".$mod."_module",
+						    "mod_mpm_".$mod, $mod);
+			}
 		if (!$not && $httpd_modules{$mod} ||
 		    $not && !$httpd_modules{$mod} ||
 		    !$not && $httpd_modules{$altmod} ||
@@ -2168,23 +2173,6 @@ foreach my $l (@{$conf_lref}) {
 if ($conf_block_opening == $conf_block_closing) {
 
     my $conf_lvl = 0;
-    my $conf_prev_line;
-    my $conf_curr_line;
-    my $conf_virthost;
-    my @confs_separate =
-           (
-           	'Protocols',
-           	'SuexecUserGroup',
-           	'ServerName',
-           	'ScriptAlias',
-           	'DocumentRoot',
-           	'ErrorLog',
-           	'DirectoryIndex',
-           	'Alias',
-           	'RewriteEngine',
-           	'Fcgid',
-           	'SSL',
-           );
     foreach my $l (@{$conf_lref}) {
         my $indent_current = $indent x $conf_lvl;
 
@@ -2194,59 +2182,20 @@ if ($conf_block_opening == $conf_block_closing) {
             # Indent up next line if a new block
             if ($l =~ /(<[a-zA-Z]+).*>/) {
                 $conf_lvl++;
-                if ($l =~ /(<VirtualHost).*>/) {
-                	$conf_virthost++;
-                	}
                 }
 
             # Indent down next line if a closing block
             if ($l =~ /(<\/[a-zA-Z]+).*>/) {
                 $conf_lvl--;
 
-                if ($l =~ /(<\/VirtualHost).*>/) {
-                	$conf_virthost--;
-                	}
-
                 # Change current indent right now as it is a closing block
                 $indent_current = $indent x $conf_lvl;
                 }
             }
 
-        # Store previous and current lines
-        $conf_prev_line = &trim($conf_curr_line);
-        $conf_curr_line = &trim($l);
-
         # Replace beginning spaces with needed indent
         $l =~ s/^\s*/$indent_current/
             if($l);
-        
-
-        # Check if current line needs to be prepended
-        # with a new line for better readability
-        if (!$config{'format_config_lines'}) {
-            # Allow new line insertion only inside of VirtualHost block
-            if ($conf_virthost) {
-                # If current line is not part of a commented block
-                if ($conf_curr_line !~ /^\s*#/) {
-                    # If previous line is not already an empty line
-                    if (length($conf_prev_line)) {
-                        # If the previous line was something 
-                        # we want to take a break before and after match
-                        if (grep {$conf_curr_line =~ /^$_/} @confs_separate &&
-                            grep {$conf_prev_line !~ /^$_/} @confs_separate) {
-                        	# If not the first directive in VirtualHost
-                        	if($conf_prev_line !~ /(^<VirtualHost).*>/) {
-                            	$l = "\n$l"
-                        		}
-                            }
-                        # If current is opening block
-                        elsif ($conf_curr_line =~ /(^<[a-zA-Z]+).*>/) {
-                            $l = "\n$l";
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

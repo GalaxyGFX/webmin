@@ -3,8 +3,6 @@ index_refreshmsg=Yüklü sunucular için tüm Webmin modüllerini yeniden kontro
 
 access_ip=İzin verilen IP adresleri
 access_local=Yerel ağı listeye dahil et
-access_elibwrap=$1 Perl modülü kurulu olmadığından TCP sarmalayıcıları kullanarak IP erişim kontrolü kullanılamaz.
-access_libwrapcpan=Webmin'in eksik Perl modülünü otomatik olarak kurması için <a href='$1'>burayı tıklayın</a>.
 access_ecidr='$1' geçerli bir CIDR numarası değil
 access_eip6='$1' tam bir IPv6 veya ağ adresi değil
 access_ecidr6='$1' geçerli bir IPv6 ağ boyutu değil
@@ -24,6 +22,10 @@ bind_maxconns_per_net=Ağ başına maksimum eşzamanlı bağlantı
 bind_emaxconns=Maksimum eşzamanlı bağlantı sayısı 1'den büyük olmalıdır
 bind_emaxconns_per_ip=IP başına maksimum eşzamanlı bağlantı sayısı 1'den büyük olmalıdır
 bind_emaxconns_per_net=Ağ başına maksimum eşzamanlı bağlantı sayısı 1'den büyük olmalıdır
+bind_maxlifetime=Maksimum Webmin işlem ömrü
+bind_maxlifetime_def=Sınırsız
+bind_maxlifetime_secs=saniye
+bind_emaxlifetime=Maksimum işlem ömrü 60 saniyeden büyük bir sayı olmalıdır
 
 log_status=Günlük kaydı etkin mi?
 log_clear2=Günlük dosyaları periyodik olarak temizlensin mi?
@@ -83,11 +85,6 @@ ui_edbwidth=Eksik veya geçersiz seçici pencere genişliği
 ui_edbheight=Eksik veya geçersiz seçici pencere yüksekliği
 ui_showlogin=Kullanıcı adlarını sayfa başlıklarına eklemek ister misiniz?
 ui_showhost=Ana bilgisayar adı sayfa başlıklarına başlasın mı?
-ui_dateformat=Görüntülenen tarihler için biçim
-ui_dateformat_dd/mon/yyyy=gg/mon/yyyy (ör. 16/Eyl/2001)
-ui_dateformat_dd/mm/yyyy=gg/aa/yyyy (ör. 16/09/2001)
-ui_dateformat_mm/dd/yyyy=aa/gg/yyyy (ör. 09/16/2001)
-ui_dateformat_yyyy/mm/dd=yyyy/aa/gg (ör. 2001/09/16)
 ui_ehostnamedisplay=Eksik veya geçersiz görünen ana bilgisayar adı
 
 mods_installsource=Yükleme yeri
@@ -127,12 +124,21 @@ os_perllib=Ekstra Perl kütüphane yolları
 os_eversion=İşletim sistemi sürümü eksik
 os_eiversion=Dahili işletim sistemi sürümü eksik
 os_incorrect=$1 işletim sistemi $2 sürümüne yükseltildi
+os_release_notes=Sürüm notları
 os_fix=Algılanan İşletim Sistemini Güncelle
 os_usermin=Ayrıca Usermin İşletim Sistemini de güncelleyin
+
+lang_title=Dil ve Yerel Ayar
+lang_title2=Webmin Dili ve Yerel Ayarı
+lang_lang=Dil
+lang_locale=yerel ayar
+lang_dateformat=Tarih görüntüleme formatı
+lang_dateformat_dd/mon/yyyy=gg/mon/yyyy (yani 16/Eylül/2001)
 
 ssl_deny=Reddedilecek SSL protokolü sürümleri
 ssl_compression=Sıkıştırılmış SSL bağlantılarına izin verilsin mi?
 ssl_honorcipherorder=Sunucu tanımlı şifre sırasını kullanmaya zorlanıyor musunuz?
+ssl_hsts=HSTS başlığıyla SSL'yi uygula
 ssl_extracasdef=Global SSL ayarlarıyla aynı
 ssl_extracasnone=Bu IP adresi için yok
 ssl_extracasbelow=Aşağıya girildi ..
@@ -221,7 +227,10 @@ startpage_moduleup=Modül güncellemeleri Sistem Bilgisi sayfasında gösterilsi
 upgrade_descdeb=Bu form, Debian paketini yükselterek tüm Webmin kurulumunuzu yeni bir sürüme yükseltmenizi sağlar. Yerel bir.deb dosyasından, yüklenen bir dosyadan veya <a href=http://www.webmin.com/>www.webmin.com</a> adresindeki en son sürümden yükleme yapabilirsiniz. Manuel yükseltmede olduğu gibi, tüm yapılandırma ayarlarınız ve üçüncü taraf modüller korunacaktır.
 upgrade_descsun-pkg=Bu form, Webmin kurulumunuzun tamamını Sun tarafından sağlanan Solaris paketinden yeni bir sürüme yükseltmenizi sağlar. Yerel bir Solaris paket dosyasından veya yüklenen bir dosyadan yükleyebilirsiniz. En son paketleri <a href=http://www.sun.com/bigadmin/content/webmin/>http://www.sun.com/bigadmin/content/webmin/</a> adresinde bulabilirsiniz. Manuel yükseltmede olduğu gibi, tüm yapılandırma ayarlarınız ve üçüncü taraf modüller korunacaktır.
 upgrade_edeb=Geçerli bir Webmin Debian paket dosyası değil
-upgrade_setupdeb=Webmin'i yükseltmek için DPKG çalıştırılıyor. Lütfen devam etmeden önce tamamlanması için bir dakika bekleyin.
+upgrade_setup=Webmin'i yükseltmek için <tt>setup.sh</tt> komut dosyası çalıştırılıyor ..
+upgrade_setuprpm=Webmin'i yükseltmek için <tt>RPM</tt> çalıştırılıyor ..
+upgrade_setupdeb=Webmin'i yükseltmek için <tt>DPKG</tt> çalıştırılıyor ..
+upgrade_setuppackage=Webmin'i yükseltmek için <tt>pkgadd</tt> çalıştırılıyor ..
 upgrade_ezip=Windows'a yüklediğinizde Webmin'in yükseltme özelliği şu anda çalışmıyor. Lütfen bunun yerine manuel olarak yükseltin.
 upgrade_eportage=Bir Portage paketinden yüklediğinizde Webmin'in yükseltme özelliği şu anda çalışmaz. Lütfen bunun yerine Portage araçlarını kullanarak yeni sürüme geçin.
 upgrade_ewpackage=Webmin için geçerli bir Solaris paketi değil
@@ -279,9 +288,13 @@ session_ecmd=Eksik veya geçersiz şifre değiştirme komutu
 session_banner=Giriş öncesi banner
 session_pmodedesc3=Şifre geçerlilik süresi politikası
 session_md5=Webmin şifre karma formatı
-session_sha512=SHA512 şifrelemesi kullanın
-session_emd5mod=MD5 şifrelemesi kullanılamaz, çünkü Perl $1 modülü kurulu değildir.
-session_esha512mod=SHA512 şifreleme kullanılamaz, çünkü Perl $1 modülü kurulu değildir.
+session_md5off=Otomatik olarak belirle
+session_md5on=<tt>MD5</tt> karma biçimini kullanın
+session_sha512=<tt>SHA512</tt> karma biçimini kullanın
+session_yescrypt=<tt>yescrypt</tt> karma biçimini kullanın
+session_emd5mod=Perl $1 modülü kurulu olmadığı için MD5 karma formatı kullanılamaz
+session_esha512mod=Perl $1 modülü kurulu olmadığı için SHA512 karma formatı kullanılamaz
+session_eyescrypt=Perl $1 modülü kurulu olmadığı için yescrypt karma formatı kullanılamaz
 session_blocklock=Ayrıca oturum açma başarısız olan kullanıcıları da kilitle
 session_passapi=Uzaktan şifre değiştirme API'si etkinleştirilsin mi?
 session_passapi0=API devre dışı
@@ -384,6 +397,7 @@ advanced_eprecache=Önbellek için kabuk kalıplarının eksik listesi
 advanced_err=Gelişmiş seçenekler kaydedilemedi
 advanced_etemp=Eksik veya var olmayan geçici dosyalar dizini
 advanced_etdir=$1 için eksik veya var olmayan geçici dosyalar dizini
+advanced_etempallowed=Geçici dosyalar dizini $1 bir sistem dizini
 advanced_pass=Webmin programları için şifre kullanılabilir mi? <br><font size=-1> (Oturum kimlik doğrulaması etkinleştirildiğinde çalışmaz) </font>
 advanced_tempmods=Modül başına geçici dizinler
 advanced_tmod=modül
@@ -587,6 +601,16 @@ web_expirespaths=URL yolunu temel alan istemci tarafı önbellek süreleri
 web_expirespath=Yol düzenli ifadesi
 web_expirestime=Saniye cinsinden önbellek süresi
 web_eexpires2=$1 satırında eksik veya sayısal olmayan istemci tarafı önbellek süresi
+web_rediruurl=Giriş sonrası geçiş yönlendirme URL'si
+web_redirdesc=Dahili yönlendirme URL'si geçersiz kılmaları
+web_eredirurl='$1' boşluk içeriyor ve geçerli bir URL değil
+web_redirhost=Ana bilgisayarı yeniden yönlendir
+web_eredirhost='$1' geçerli bir ana bilgisayar adı değil
+web_redirport=Yönlendirme bağlantı noktası
+web_redirpref=Yönlendirme öneki
+web_eredirpref=Önek, eğik çizgi ile başlamalıdır
+web_eredirpref2=Ön ek boşluk içermemelidir
+web_redirssl=SSL'yi yeniden yönlendir
 
 webmincron_title=Webmin Zamanlanmış İşlevleri
 webmincron_emodule=Webmin Cron Jobs modülü kurulu değil!

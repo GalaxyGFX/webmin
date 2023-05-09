@@ -21,10 +21,10 @@ local (@rv, @newpacks);
 
 # Build the command to run
 $ENV{'DEBIAN_FRONTEND'} = 'noninteractive';
+local $uicmd = "$apt_get_command -y ".($force ? " -f" : "")." install $update";
 $update = join(" ", map { quotemeta($_) } split(/\s+/, $update));
-$update =~ s/\\(-)|\\(.)/$1$2/g;
 local $cmd = "$apt_get_command -y ".($force ? " -f" : "")." install $update";
-print "<b>",&text('apt_install', "<tt>$cmd</tt>"),"</b><p>\n";
+print "<b>",&text('apt_install', "<tt>".&html_escape($uicmd)."</tt>"),"</b><p>\n";
 print "<pre>";
 &additional_log('exec', undef, $cmd);
 
@@ -43,7 +43,7 @@ foreach (0..100) {
 
 # Run the command
 &clean_language();
-&open_execute_command(CMD, "$cmd <$yesfile", 2);
+&open_execute_command(CMD, "$cmd <".quotemeta($yesfile), 2);
 while(<CMD>) {
 	if (/setting\s+up\s+(\S+)/i && !/as\s+MDA/i) {
 		push(@rv, $1);

@@ -15,10 +15,11 @@ foreach my $f (glob("$netplan_dir/*.yaml")) {
 	next if (!$yaml || !@$yaml);
 	my ($network) = grep { $_->{'name'} eq 'network' } @$yaml;
 	next if (!$network);
-	my ($ens) = grep { $_->{'name'} eq 'ethernets' }
+	my @ens = grep { $_->{'name'} eq 'ethernets' ||
+			 $_->{'name'} eq 'bridges' }
 			 @{$network->{'members'}};
-	next if (!$ens);
-	foreach my $e (@{$ens->{'members'}}) {
+	next if (!@ens);
+	foreach my $e (map { @{$_->{'members'}} } @ens) {
 		my $cfg = { 'name' => $e->{'name'},
 			    'fullname' => $e->{'name'},
 			    'file' => $f,
@@ -123,6 +124,27 @@ foreach my $f (glob("$netplan_dir/*.yaml")) {
 			$cfg->{'routes'} = $routes;
 			}
 
+		# Bridges
+		my ($interfaces) = grep { $_->{'name'} eq 'interfaces' }
+                                        @{$e->{'members'}};
+		if ($interfaces) {
+			$cfg->{'bridgeto'} = $interfaces->{'value'};
+			$cfg->{'bridge'} = 1;
+			}
+		my ($p) = grep { $_->{'name'} eq 'parameters' }
+                               @{$e->{'members'}};
+		if ($p) {
+			my ($stp) = grep { $_->{'name'} eq 'stp' }
+					 @{$p->{'members'}};
+			$cfg->{'bridgestp'} = $stp && $stp->{'value'} eq 'false' ? 'off' : 'on';
+			my ($fwd) = grep { $_->{'name'} eq 'forward-delay' }
+					 @{$p->{'members'}};
+			$cfg->{'bridgefd'} = $fwd->{'value'} if ($fwd);
+			}
+		else {
+			$cfg->{'bridgestp'} = 'on';
+			}
+
 		# Add IPv4 alias interfaces
 		my $i = 0;
 		foreach my $aa (@addrs) {
@@ -220,6 +242,16 @@ else {
 	if ($iface->{'routes'}) {
 		push(@lines, &yaml_lines($iface->{'routes'}, $id."    "));
 		}
+	if ($iface->{'bridgeto'}) {
+		push(@lines, $id."    "."interfaces: [".$iface->{'bridgeto'}."]");
+		push(@lines, $id."    "."parameters:");
+		push(@lines, $id."        "."stp: ".
+			($iface->{'bridgestp'} eq 'on' ? 'true' : 'false'));
+		if ($iface->{'bridgefd'}) {
+			push(@lines, $id."        "."forward-delay: ".
+				     $iface->{'bridgefd'});
+			}
+		}
 
 	# Add all extra YAML directives from the original config
 	my @poss = ("optional", "dhcp4", "dhcp6", "addresses", "gateway4",
@@ -249,9 +281,10 @@ else {
 		my $lref = &read_file_lines($iface->{'file'});
 		my $nline = -1;
 		my $eline = -1;
+		my $sect = $iface->{'bridge'} ? 'bridges' : 'ethernets';
 		for(my $i=0; $i<@$lref; $i++) {
 			$nline = $i if ($lref->[$i] =~ /^\s*network:/);
-			$eline = $i if ($lref->[$i] =~ /^\s*ethernets:/);
+			$eline = $i if ($lref->[$i] =~ /^\s*\Q$sect\E:/);
 			}
 		if ($nline < 0) {
 			$nline = scalar(@$lref);
@@ -259,7 +292,7 @@ else {
 			}
 		if ($eline < 0) {
 			$eline = $nline + 1;
-			splice(@$lref, $nline+1, 0, "    ethernets:");
+			splice(@$lref, $nline+1, 0, "    ".$sect.":");
 			}
 		splice(@$lref, $eline+1, 0, @lines);
 		&flush_file_lines($iface->{'file'});
@@ -306,7 +339,8 @@ return 1 if (!$yaml);
 my @rest = grep { $_->{'name'} ne 'network' } @$yaml;
 return 0 if (@rest);
 foreach my $n (@$yaml) {
-	my @rest = grep { $_->{'name'} ne 'ethernets' }
+	my @rest = grep { $_->{'name'} ne 'ethernets' &&
+			  $_->{'name'} ne 'bridges' }
 			@{$network->{'members'}};
 	return 0 if (@rest);
 	foreach my $ens (@{$network->{'members'}}) {
@@ -349,7 +383,7 @@ return 1;
 # Bridge interfaces can be created on debian
 sub supports_bridges
 {
-return 0;	# XXX fix later
+return 1;
 }
 
 # can_edit(what)
@@ -357,7 +391,8 @@ return 0;	# XXX fix later
 sub can_edit
 {
 my ($f) = @_;
-return $f ne "mtu";
+return $f eq "mtu" ? 0 :
+       $f eq "bridgewait" ? 0 : 1;
 }
 
 sub can_broadcast_def
@@ -387,15 +422,21 @@ return &get_system_hostname();
 sub save_hostname
 {
 my ($hostname) = @_;
-my (%conf, $f);
 &system_logged("hostname ".quotemeta($hostname)." >/dev/null 2>&1");
-foreach $f ("/etc/hostname", "/etc/HOSTNAME", "/etc/mailname") {
+foreach my $f ("/etc/hostname", "/etc/HOSTNAME", "/etc/mailname") {
 	if (-r $f) {
 		&open_lock_tempfile(HOST, ">$f");
-		&print_tempfile(HOST, $_[0],"\n");
+		&print_tempfile(HOST, $hostname,"\n");
 		&close_tempfile(HOST);
 		}
 	}
+
+# Use the hostnamectl command as well
+if (&has_command("hostnamectl")) {
+	&system_logged("hostnamectl set-hostname ".quotemeta($hostname).
+		       " >/dev/null 2>&1");
+	}
+
 undef(@main::get_system_hostname);      # clear cache
 }
 

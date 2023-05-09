@@ -4,6 +4,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 # Globals from bind8-lib.pl
 our (%access, %text, %in, %config);
 # Globals from records-lib.pl
@@ -23,6 +25,7 @@ $access{'delete'} || &error($text{'master_edeletecannot'});
 my $rev = ($zconf->{'value'} =~ /in-addr\.arpa/i ||
 	$zconf->{'value'} =~ /\.$ipv6revzone/i);
 my $type = &find("type", $zconf->{'members'})->{'value'};
+$type = 'master' if ($type eq 'primary');
 if (!$in{'confirm'} && $config{'confirm_zone'}) {
 	# Ask the user if he is sure ..
 	&ui_print_header(undef, $text{'delete_title'}, "",
@@ -126,7 +129,7 @@ if ($f && $type ne 'hint') {
 	}
 
 # delete any keys
-&delete_dnssec_key($zconf);
+&delete_dnssec_key($zconf, 0);
 
 # delete all dnssec-tools related state
 &dt_delete_dnssec_state($zconf);

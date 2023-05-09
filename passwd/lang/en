@@ -1,5 +1,5 @@
 index_title=Change Passwords
-index_header=Select a user to change his or her password
+index_header=Select a user to change their password
 index_return=user list
 index_user=Change password for user:
 index_euseradmin=This module cannot be used because the Users and Groups module is not installed or not supported on your system.
@@ -11,7 +11,7 @@ passwd_header=Changing Unix user password
 passwd_for=Changing password for
 passwd_old=Old password
 passwd_new=New password
-passwd_repeat=New password (again)
+passwd_repeat=Repeat password
 passwd_expire=Force user to change password at next login?
 passwd_others=Change password in other modules?
 passwd_change=Change

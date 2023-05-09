@@ -18,6 +18,17 @@ foreach my $f (split(/\s+/, $config{'dovecot_config'})) {
 return undef;
 }
 
+# get_add_config_file()
+# Returns the full path to the first valid config file for new top-level
+# directives
+sub get_add_config_file
+{
+foreach my $f (split(/\s+/, $config{'add_config'})) {
+	return $f if (-r $f);
+	}
+return &get_config_file();
+}
+
 # get_config()
 # Returns a list of dovecot config entries
 sub get_config
@@ -280,12 +291,13 @@ elsif (!$dir && defined($value)) {
 		}
 	else {
 		# Need to put at end of main config
-		local $lref = &read_file_lines(&get_config_file());
+		local $file = &get_add_config_file();
+		local $lref = &read_file_lines($file);
 		push(@$lref, $newline);
 		push(@$conf, { 'name' => $name,
 			       'value' => $value,
 			       'enabled' => 1,
-			       'file' => &get_config_file(),
+			       'file' => $file,
 			       'line' => scalar(@$lref)-1,
 			       'eline' => scalar(@$lref)-1,
 			       'sectionname' => $sname,
@@ -322,11 +334,11 @@ foreach my $m (@{$section->{'members'}}) {
 	}
 }
 
-# create_section(&conf, &section, [&parent])
+# create_section(&conf, &section, [&parent], [&before])
 # Adds a section to the config file
 sub create_section
 {
-local ($conf, $section, $parent) = @_;
+local ($conf, $section, $parent, $before) = @_;
 local $indent = "  " x $section->{'indent'};
 local @newlines;
 push(@newlines, $indent.$section->{'name'}." ".$section->{'value'}." {");
@@ -343,10 +355,17 @@ if ($parent) {
 	$section->{'line'} = $parent->{'eline'};
 	}
 else {
-	# Add to the end of the global config file
+	# Add to the global config file
 	$file = &get_config_file();
 	$lref = &read_file_lines($file);
-	$section->{'line'} = scalar(@$lref);
+	if ($before) {
+		# Add before another block
+		$section->{'line'} = $before->{'line'};
+		}
+	else {
+		# Add at the end
+		$section->{'line'} = scalar(@$lref);
+		}
 	}
 splice(@$lref, $section->{'line'}, 0, @newlines);
 &renumber($conf, $section->{'eline'}, $section->{'file'},
@@ -404,28 +423,15 @@ local $base = &find_value("base_dir", &get_config(), 2);
 return &check_pid_file("$base/master.pid");
 }
 
-# get_initscript()
-# Returns the full path to the Dovecot init script
-sub get_initscript
-{
-if ($config{'init_script'}) {
-	&foreign_require("init");
-	if ($init::init_mode eq "init") {
-		return &init::action_filename($config{'init_script'});
-		}
-	}
-return undef;
-}
-
 # stop_dovecot()
 # Attempts to stop the dovecot server process, returning an error message or
 # undef if successful
 sub stop_dovecot
 {
-local $script = &get_initscript();
-if ($script) {
-	local $out = &backquote_logged("$script stop 2>&1 </dev/null");
-	return $? ? "<pre>$out</pre>" : undef;
+if ($config{'init_script'}) {
+	&foreign_require("init");
+	my ($ok, $out) = &init::stop_action($config{'init_script'});
+	return $ok ? undef : "<pre>".&html_escape($out)."</pre>";
 	}
 else {
 	local $pid = &is_dovecot_running();
@@ -443,14 +449,20 @@ else {
 # undef if successful
 sub start_dovecot
 {
-local $script = &get_initscript();
-local $cmd = $script ? "$script start" : $config{'dovecot'};
-local $temp = &transname();
-&system_logged("$cmd >$temp 2>&1 </dev/null &");
-sleep(1);
-local $out = &read_file_contents($temp);
-&unlink_file($temp);
-return &is_dovecot_running() ? undef : "<pre>$out</pre>";
+if ($config{'init_script'}) { 
+        &foreign_require("init");
+        my ($ok, $out) = &init::start_action($config{'init_script'});
+        return $ok ? undef : "<pre>".&html_escape($out)."</pre>";
+        }
+else {
+	local $cmd = $config{'dovecot'};
+	local $temp = &transname();
+	&system_logged("$cmd >$temp 2>&1 </dev/null &");
+	sleep(1);
+	local $out = &read_file_contents($temp);
+	&unlink_file($temp);
+	return &is_dovecot_running() ? undef : "<pre>$out</pre>";
+	}
 }
 
 # apply_configration([full-restart])
@@ -464,14 +476,21 @@ if (!$pid) {
 	}
 elsif ($restart) {
 	# Fully shut down and re-start
-	&stop_dovecot();
-	local $err;
-	for(my $i=0; $i<5; $i++) {
-		$err = &start_dovecot();
-		last if (!$err);
-		sleep(1);
+	if ($config{'init_script'}) {
+		&foreign_require("init");
+		my ($ok, $out) = &init::restart_action($config{'init_script'});
+		return $ok ? undef : "<pre>".&html_escape($out)."</pre>";
 		}
-	return $err;
+	else {
+		&stop_dovecot();
+		local $err;
+		for(my $i=0; $i<5; $i++) {
+			$err = &start_dovecot();
+			last if (!$err);
+			sleep(1);
+			}
+		return $err;
+		}
 	}
 else {
 	# Send the HUP signal

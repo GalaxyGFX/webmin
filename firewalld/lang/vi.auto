@@ -7,13 +7,13 @@ index_applydesc=Nhấp vào nút này để làm cho cấu hình tường lửa 
 index_restart=Áp dụng cấu hình
 index_restartdesc=Kích hoạt tất cả các dịch vụ và cổng được phép được liệt kê ở trên, trong tất cả các vùng. Bất kỳ quy tắc hoạt động nào không được tạo vĩnh viễn sẽ được thay thế.
 index_start=Bắt đầu Tường lửa
-index_startdesc=Khởi động máy chủ FirewallD và áp dụng các quy tắc được liệt kê ở trên.
+index_startdesc=Khởi động máy chủ FirewallD.
 index_stop=Dừng tường lửa
 index_stopdesc=Tắt máy chủ FirewallD và xóa tất cả các quy tắc được liệt kê ở trên.
 index_cerr=Không thể sử dụng mô-đun FirewallD : $1 
 index_zone=Hiển thị quy tắc trong khu vực:
 index_zoneok=Thay đổi
-index_zoneadd=Thêm vùng ..
+index_zoneadd=Thêm khu vực
 index_zonedel=Xóa vùng
 index_zonedef=Làm mặc định
 index_type=Loại quy tắc
@@ -30,6 +30,14 @@ index_return=danh sách các khu
 index_ezones=Không tìm thấy vùng FirewallD!
 index_none=Khu vực này chưa có bất kỳ cổng hoặc dịch vụ được phép nào.
 index_ifaces=Áp dụng quy tắc cho giao diện:
+index_ifaces_def=Tất cả các giao diện
+index_ifaces_sel=Các giao diện đã chọn:
+index_ifaces_apply=Nộp đơn
+index_listrules=Liệt kê các quy tắc FirewallD
+index_restart_firewalld=Tải lại tường lửaD
+index_restart_firewallddesc=Tải lại máy chủ FirewallD và áp dụng các quy tắc đã được tạo vĩnh viễn.
+index_listrules_restartdesc=Liệt kê chi tiết về các quy tắc FirewallD trực tiếp và phong phú hiện có trong vùng $1.
+index_dependent=Không thể khởi động lại dịch vụ phụ thuộc $1 
 
 port_edit=Chỉnh sửa cổng
 port_create=Thêm cổng
@@ -90,6 +98,22 @@ delzone_edefault=Vùng mặc định không thể xóa
 delzone_rusure=Bạn có chắc chắn muốn xóa vùng $1, chứa $2 cổng và $3 dịch vụ không?
 
 defzone_err=Không thể tạo vùng mặc định
+
+list_rule_iperr=địa chỉ IP không hợp lệ
+list_rule_actionerr=Hành động không hợp lệ
+list_rules_title=Quy tắc FirewallD
+list_rules_title_sub=trong vùng $1 
+list_rules_delete=Xóa các quy tắc đã chọn
+list_rules_type=Gõ phím
+list_rules_type_rich=Giàu có
+list_rules_type_direct=Trực tiếp
+list_rules_protocol=Giao thức
+list_rules_ip=IP
+list_rules_origin=Nguồn gốc
+list_rules_action=Hoạt động
+list_rules_rule=Luật lệ
+list_rules_plus_more=+ $1 khác
+log_save_rules=Đã xóa $1 quy tắc
 
 restart_err=Không thể áp dụng cấu hình
 

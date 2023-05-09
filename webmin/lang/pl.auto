@@ -6,6 +6,10 @@ bind_maxconns_per_net=Maksymalna liczba jednoczesnych połączeń na sieć
 bind_emaxconns=Maksymalna liczba jednoczesnych połączeń musi być większa niż 1
 bind_emaxconns_per_ip=Maksymalna liczba jednoczesnych połączeń na adres IP musi być większa niż 1
 bind_emaxconns_per_net=Maksymalna liczba jednoczesnych połączeń na sieć musi być większa niż 1
+bind_maxlifetime=Maksymalny czas życia procesu Webmin
+bind_maxlifetime_def=Nieograniczony
+bind_maxlifetime_secs=sekundy
+bind_emaxlifetime=Maksymalny czas życia procesu musi być liczbą większą niż 60 sekund
 
 log_global=&lt;Działania globalne&gt;
 log_sched=Zalogować zaplanowane funkcje?
@@ -18,7 +22,16 @@ ui_nice_size_type=Użyj binarnych jednostek miary (KiB, MiB, GiB zamiast KB, MB,
 mods_checksig=Sprawdź plik podpisu dla pobranych modułów?
 
 os_incorrect=System operacyjny $1 został zaktualizowany do wersji $2 
+os_release_notes=Informacje o wydaniu
 
+lang_title=Język i lokalizacja
+lang_title2=Język i ustawienia regionalne Webmina
+lang_lang=Język
+lang_locale=Widownia
+lang_dateformat=Format wyświetlania dat
+lang_dateformat_dd/mon/yyyy=dd/pon.rrrr (tj. 16/09/2001)
+
+ssl_hsts=Wymuszaj SSL za pomocą nagłówka HSTS
 ssl_ekey2=Plik klucza prywatnego SSL $1 nie zawiera klucza formatu PEM
 ssl_ecert2=Plik certyfikatu SSL $1 nie zawiera certyfikatu formatu PEM
 ssl_edhparams=Nie udało się wygenerować pliku parametrów PFS DH : $1
@@ -47,11 +60,21 @@ ssl_staging1=Inscenizacja (tylko test)
 
 newkey_ecns=Nie wprowadzono nazw serwerów
 
+upgrade_setup=Uruchamianie skryptu <tt>setup.sh</tt> w celu aktualizacji Webmin ..
+upgrade_setuprpm=Uruchamiam <tt>RPM</tt>, aby uaktualnić Webmina ..
+upgrade_setupdeb=Uruchamianie <tt>DPKG</tt> w celu aktualizacji Webmina ..
+upgrade_setuppackage=Uruchamianie <tt>pkgadd</tt> w celu aktualizacji Webmina ..
+
 ca_alt=Dodatkowe domeny
 
 session_utmp=Zapisywać loginy i wylogowania w <tt>utmp</tt>?
-session_sha512=Użyj szyfrowania SHA512
-session_esha512mod=Nie można użyć szyfrowania SHA512, ponieważ moduł Perl $1 nie jest zainstalowany.
+session_md5off=Określ automatycznie
+session_md5on=Użyj formatu mieszającego <tt>MD5</tt>
+session_sha512=Użyj formatu mieszającego <tt>SHA512</tt>
+session_yescrypt=Użyj formatu mieszającego <tt>yescrypt</tt>
+session_emd5mod=Nie można użyć formatu mieszającego MD5, ponieważ moduł Perl $1 nie jest zainstalowany
+session_esha512mod=Nie można użyć formatu skrótu SHA512, ponieważ moduł Perl $1 nie jest zainstalowany
+session_eyescrypt=Nie można użyć formatu haszującego yescrypt, ponieważ moduł Perl $1 nie jest zainstalowany
 session_passapi=Włączyć interfejs API zdalnej zmiany hasła?
 session_passapi0=API wyłączone
 session_passapi1=API włączone dla użytkowników Uniksa
@@ -64,6 +87,7 @@ log_letsencryptcleanup=Usunięto Let's Encrypt DNS record dla $1
 ipkey_ips2=Adresy IP i nazwy hostów
 ipkey_eip2=„$1” nie jest prawidłowym adresem IP ani nazwą hosta
 
+advanced_etempallowed=Katalog plików tymczasowych $1 jest katalogiem systemowym
 advanced_listdir=Wyświetlać katalogi bez pliku indeksu?
 advanced_headers=Dodatkowe nagłówki HTTP
 advanced_eheader=Nagłówki muszą być sformatowane jak <tt>Header: Value</tt>
@@ -82,6 +106,17 @@ sendmail_url=Adres URL Webmin do użytku w wiadomościach e-mail
 sendmail_url_def=Domyślnie ($1)
 sendmail_url_custom=Niestandardowy adres URL
 sendmail_eurl=Brakujący lub nieprawidłowy niestandardowy URL
+
+web_rediruurl=Adres URL przekierowania przełącznika po zalogowaniu
+web_redirdesc=Zastąpienia wewnętrznego przekierowania URL
+web_eredirurl=„$1” zawiera spacje i nie jest prawidłowym adresem URL
+web_redirhost=Przekieruj hosta
+web_eredirhost=„$1” nie jest prawidłową nazwą hosta
+web_redirport=Przekieruj port
+web_redirpref=Prefiks przekierowania
+web_eredirpref=Prefiks musi zaczynać się od ukośnika
+web_eredirpref2=Prefiks nie może zawierać spacji
+web_redirssl=Przekieruj SSL
 
 twofactor_eusers=Nie można wyłączyć uwierzytelniania dwuskładnikowego, ponieważ obecnie zarejestrowani są następujący użytkownicy : $1
 

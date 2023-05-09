@@ -142,7 +142,9 @@ else {
 		}
 
 	&main_header(&get_remote_mysql_variant());
-	print &ui_subheading($text{'index_dbs'}) if ($access{'perms'});
+	print &ui_subheading($text{'index_dbs'})
+	    if ($access{'perms'} &&
+	        $displayconfig{'style'} != 1);
 	if ($in{'search'}) {
 		# Limit to those matching search
 		@titles = grep { /\Q$in{'search'}\E/i } @titles;
@@ -262,7 +264,7 @@ else {
 			   'list_tprivs.cgi', 'list_cprivs.cgi',
 			   'edit_cnf.cgi', 'edit_manual.cgi', 'list_procs.cgi',
 			   $canvars ? ( 'list_vars.cgi' ) : ( ),
-			   'root_form.cgi',
+			   'edit_ssl.cgi', 'root_form.cgi',
 			 );
 		@titles = ( $text{'users_title'}, $text{'dbs_title'},
 			    $canhosts ? ( $text{'hosts_title'} ) : ( ),
@@ -270,7 +272,7 @@ else {
 			    $text{'cnf_title'}, $text{'manual_title'},
 			    $text{'procs_title'},
 			    $canvars ? ( $text{'vars_title'} ) : ( ),
-			    $text{'root_title'},
+			    $text{'ssl_title'}, $text{'root_title'},
 			  );
 		@images = ( 'images/users.gif', 'images/dbs.gif',
 			    $canhosts ? ( 'images/hosts.gif' ) : ( ),
@@ -278,7 +280,7 @@ else {
 			    'images/cnf.gif', 'images/manual.gif',
 			    'images/procs.gif',
 			    $canvars ? ( 'images/vars.gif' ) : ( ),
-			    'images/root.gif',
+			    'images/ssl.gif', 'images/root.gif',
 			  );
 		if ($access{'perms'} == 2) {
 			# Remove my.cnf and database connections icons
@@ -286,6 +288,7 @@ else {
 			@titles = @titles[0..4];
 			@images = @images[0..4];
 			}
+		@images = map { $_ = &get_webprefix()."/mysql/$_" } @images;
 		&icons_table(\@links, \@titles, \@images, 5);
 		}
 
@@ -320,9 +323,9 @@ else {
 		push(@needs, "DBD::mysql") if ($@);
 		if (@needs) {
 			$needs = &urlize(join(" ", @needs));
-			print "<center><b>",&text(@needs == 2 ? 'index_nomods' : 'index_nomod', @needs,
-				"/cpan/download.cgi?source=3&cpan=$needs&mode=2&return=/$module_name/&returndesc=".&urlize($text{'index_return'})),
-				"</b></center>\n";
+			print "<b>".&ui_text_color(&text(@needs == 2 ? 'index_nomods' : 'index_nomod', @needs,
+				"../cpan/download.cgi?source=3&cpan=$needs&mode=2&return=/$module_name/&returndesc=".
+				  &urlize($text{'index_return'})), 'warn')."</b>";
 			}
 		}
 	}

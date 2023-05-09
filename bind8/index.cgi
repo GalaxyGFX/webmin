@@ -2,6 +2,8 @@
 # Display a list of domains, views, and icons for global options.
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %config, %gconfig, %in);
 our ($module_name, $module_config_directory);
 
@@ -185,6 +187,7 @@ elsif (@zones && (!@views || !$config{'by_view'})) {
 		my $t = $z->{'type'};
 		next if (!$t);
 		$t = "delegation" if ($t eq "delegation-only");
+		$t = "master" if ($t eq "primary");
 		my $zn = $v eq "." ? "<i>$text{'index_root'}</i>"
 				      : &ip6int_to_net(&arpa_to_ip($v));
 		if ($z->{'view'}) {
@@ -348,6 +351,8 @@ elsif (@zones) {
 		foreach my $z (@zv) {
 			my $v = $z->{'name'};
 			my $t = $z->{'type'};
+			$t = "delegation" if ($t eq "delegation-only");
+			$t = "master" if ($t eq "primary");
 			my $zn = $v eq "." ? "<i>$text{'index_root'}</i>"
 					      : &ip6int_to_net(&arpa_to_ip($v));
 			push(@zlinks, "edit_$t.cgi?zone=$z->{'name'}".

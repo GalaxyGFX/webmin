@@ -2,6 +2,8 @@
 # Add or update a server or group from the webmin servers module
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in, %config);
 
 require './bind8-lib.pl';
@@ -58,7 +60,7 @@ foreach my $v (@views) {
 	}
 foreach my $z (@zoneconfs) {
 	my $type = &find_value("type", $z->{'members'});
-	if ($type eq "master") {
+	if ($type eq "master" || $type eq "primary") {
 		$zmap{$z->{'value'}} = $z;
 		}
 	}
@@ -83,18 +85,6 @@ foreach my $s (@add) {
 					   "foreign_installed", "bind8", 1);
 	if (!$inst) {
 		print &text('add_emissing', $s->{'host'}),"<p>\n";
-		next;
-		}
-
-	# Check for needed Webmin versions
-	my $rver = &remote_foreign_call($s, "bind8", "get_webmin_version");
-	if ($rver < 1.202) {
-		print &text('add_eversion', $s->{'host'}, 1.202),"<p>\n";
-		next;
-		}
-	if ($s->{'bind8_view'} && $s->{'bind8_view'} =~ /\s/ &&
-	    $rver < 1.422) {
-		print &text('add_eversion2', $s->{'host'}, 1.422),"<p>\n";
 		next;
 		}
 

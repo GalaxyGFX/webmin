@@ -39,8 +39,8 @@ local ($server, $port, $user, $pass, $ssl);
 if ($config{'server'}) {
 	# Remote box .. everything must be set
 	$server = $config{'server'};
-	&to_ipaddress($server) || return &text('connect_eserver',
-					       "<tt>$server</tt>");
+	&to_ipaddress($server) || &to_ip6address($server) ||
+		return &text('connect_eserver', "<tt>$server</tt>");
 	$port = $config{'port'};
 	$user = $config{'user'};
 	$user || return $text{'connect_euser'};
@@ -593,8 +593,8 @@ sub valid_pem_file
 local ($file, $type) = @_;
 local $data = &read_file_contents($file);
 if ($type eq 'key') {
-	return $data =~ /\-{5}BEGIN (RSA )?PRIVATE KEY\-{5}/ &&
-	       $data =~ /\-{5}END (RSA )?PRIVATE KEY\-{5}/;
+	return $data =~ /\-{5}BEGIN (RSA |EC )?PRIVATE KEY\-{5}/ &&
+	       $data =~ /\-{5}END (RSA |EC )?PRIVATE KEY\-{5}/;
 	}
 else {
 	return $data =~ /\-{5}BEGIN CERTIFICATE\-{5}/ &&
@@ -940,6 +940,25 @@ foreach my $f (@ldap_lock_files) {
 	&unlock_file($f);
 	}
 @ldap_lock_files = ( );
+}
+
+# hash_ldap_password(pass)
+# Returns a password hashed in a format the LDAP server can accept in the config
+# file, with the appropriate prefix
+sub hash_ldap_password
+{
+my ($pass) = @_;
+my $rv;
+if (&has_command("slappasswd")) {
+	$rv = &backquote_command("slappasswd -s ".quotemeta($pass)." 2>/dev/null </dev/null");
+	$rv =~ s/\s+//g;
+	}
+if (!$rv) {
+	&seed_random();
+	my $salt = chr(int(rand(26))+65).chr(int(rand(26))+65);
+	$rv = "{crypt}".&unix_crypt($pass, $salt);
+	}
+return $rv;
 }
 
 1;

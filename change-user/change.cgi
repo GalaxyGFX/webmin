@@ -4,6 +4,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './change-user-lib.pl';
 our (%text, %in, %gconfig, $base_remote_user, %access);
 &ReadParse();
@@ -37,6 +39,30 @@ if ($access{'lang'}) {
 	else {
 		$user->{'lang'} = $in{'lang'};
 		$user->{'langauto'} = $in{'langauto'} ? 1 : 0;
+		}
+	}
+
+# Parse custom locale
+if ($access{'locale'}) {
+	# Parse new locale
+	if ($in{'locale_def'} ||
+	    $in{'locale'}) {
+		if ($in{'locale_def'}) {
+			$user->{'locale'} = undef;
+			}
+		else {
+			$user->{'locale'} = $in{'locale'};
+			}
+		}
+	# Parse old dateformat
+	if ($in{'dateformat_def'} ||
+	    $in{'dateformat'}) {
+		if ($in{'dateformat_def'}) {
+			$user->{'dateformat'} = undef;
+			}
+		else {
+			$user->{'dateformat'} = $in{'dateformat'};
+			}
 		}
 	}
 

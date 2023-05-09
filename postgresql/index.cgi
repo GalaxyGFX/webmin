@@ -292,9 +292,9 @@ if (&foreign_available("cpan")) {
 	push(@needs, "DBD::Pg") if ($@);
 	if (@needs) {
 		$needs = &urlize(join(" ", @needs));
-		print "<center><b>",&text(@needs == 2 ? 'index_nomods' : 'index_nomod', @needs,
-			"/cpan/download.cgi?source=3&cpan=$needs&mode=2&return=/$module_name/&returndesc=".&urlize($text{'index_return'})),
-			"</b></center>\n";
+		print "<b>".&ui_text_color(&text(@needs == 2 ? 'index_nomods' : 'index_nomod', @needs,
+			"../cpan/download.cgi?source=3&cpan=$needs&mode=2&return=/$module_name/&returndesc=".
+			    &urlize($text{'index_return'})), 'warn')."</b>";
 		}
 	}
 
@@ -302,13 +302,19 @@ if (&foreign_available("cpan")) {
 
 sub main_header
 {
-local ($noschemas) = @_;
+my ($noschemas) = @_;
+my $smsg = "";
+if (!$noschemas) {
+	eval {
+		local $main::error_must_die = 1;
+		$smsg = supports_schemas($config{'basedb'}) ?
+				" ".$text{'index_sch'} : "";
+		};
+	}
 &ui_print_header(undef, $text{'index_title'}, "", "intro", 1, 1, 0,
 	&help_search_link("postgresql", "man", "doc", "google"),
 	undef, undef, $postgresql_version ?
-	   &text('index_version', $postgresql_version).
-	   ($noschemas ? "" :
-	    &supports_schemas($config{'basedb'}) ? " $text{'index_sch'}" : "") :
+	   &text('index_version', $postgresql_version).$smsg :
 	   undef);
 }
 

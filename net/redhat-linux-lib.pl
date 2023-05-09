@@ -83,7 +83,7 @@ while($f = readdir(CONF)) {
 		$b->{'file'} = "$net_scripts_dir/$f";
 		push(@rv, $b);
 		}
-	elsif ($f !~ /\.(bak|old)$/i && $f =~ /^ifcfg-([a-zA-Z_0-9:\.]+)$/) {
+	elsif ($f !~ /\.(bak|old)$/i && $f =~ /^ifcfg-([a-zA-Z_0-9:\.\-]+)$/) {
 		# Normal interface
 		my $fname = $1;
 		&read_env_file("$net_scripts_dir/$f", \%conf);
@@ -321,9 +321,9 @@ else {
 			$conf{'IPV6ADDR_SECONDARIES'} = join(" ", @ip6s);
 			}
 		if ($b->{'fullname'} =~ /^br(\d+)$/) {
-			&has_command("brctl") ||
-				&error("Bridges cannot be created unless the brctl ".
-				       "command is installed");
+			&has_command("brctl") || &has_command("ip") ||
+				&error("Bridges cannot be created unless the ".
+				       "brctl command is installed");
 			$conf{'TYPE'} = 'Bridge';
 			}
 		if ($b->{'fullname'} =~ /^bond(\d+)$/) {
@@ -438,12 +438,9 @@ else {
 # Can some boot-time interface parameter be edited?
 sub can_edit
 {
-if ($supports_mtu) {
-	return 1;
-	}
-else {
-	return $_[0] ne "mtu";
-	}
+my ($f) = @_;
+return $f eq "mtu" ? $supports_mtu :
+       $f eq "bridgestp" || $f eq "bridgefd" || $f eq "bridgewait" ? 0 : 1;
 }
 
 sub can_broadcast_def

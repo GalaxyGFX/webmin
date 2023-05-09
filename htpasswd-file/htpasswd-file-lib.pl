@@ -4,6 +4,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 BEGIN { push(@INC, ".."); };
 use WebminCore;
 our (%access, $module_name, %config, %gconfig, %list_authusers_cache,
@@ -156,10 +158,10 @@ else {
 			}
 		}
 	else {
-		# Use built-in encryption code
-		my $salt = $old ||
-			   chr(int(rand(26))+65).chr(int(rand(26))+65);
-		return &unix_crypt($str, $salt);
+		# Use built-in encryption code and use system default
+		my $salt = $old;
+		&foreign_require('useradmin');
+		return &useradmin::encrypt_password($str, $salt, 0, 1);
 		}
 	}
 }

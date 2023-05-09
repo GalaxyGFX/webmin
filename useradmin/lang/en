@@ -158,6 +158,7 @@ usave_ereal='$1' is not a valid real name
 usave_ehome='$1' is not a valid home directory
 usave_esgname='$1' is not a valid secondary group name
 usave_ehomepath=You are not allowed to create the home directory $1
+usave_ehomeslash=Home directory $1 cannot end with a /
 usave_eshell='$1' is not an allowable shell
 usave_egid='$1' is not a valid group
 usave_egcreate=You are not allowed to create new groups for new users
@@ -179,9 +180,8 @@ usave_echmod=Couldn't chmod home directory : $1
 usave_eoffice=Office cannot contain a : character
 usave_eworkph=Work phone cannot contain a : character
 usave_ehomeph=Home phone cannot contain a : character
-usave_edigestmd5=Your system has MD5 passwords enabled, but the Perl <tt>$3</tt> module is not installed.<p>To force the use of normal encrypted passwords, adjust your <a href='$1'>module configuration</a>.<p>Or have Webmin <a href='$2'>download and install</a> the <tt>$3</tt> module for you.
-usave_edigestblowfish=Your system has Blowfish passwords enabled, but the Perl <tt>$3</tt> module is not installed.<p>To force the use of normal encrypted passwords, adjust your <a href='$1'>module configuration</a>.<p>Or have Webmin <a href='$2'>download and install</a> the <tt>$3</tt> module for you.
-usave_edigestsha512=Your system has Blowfish passwords enabled, but the <tt>crypt</tt> function does not support this format.
+usave_edigestmod=Your system has $4 passwords enabled, however the Perl <tt>$3</tt> module is not installed. To force the use of normal encrypted passwords, adjust your <a href='$1'>module configuration</a> or have Webmin to try to <a href='$2'>download and install</a> the <tt>$3</tt> module for you.
+usave_edigestcrypt=Your system has $4 passwords enabled, but the <tt>crypt</tt> function does not support this format. To force the use of normal encrypted passwords, adjust your <a href='$1'>module configuration</a>.
 usave_emaking=Before update command failed : $1
 usave_epasswd_min=Password must be at least $1 letters long
 usave_epasswd_re=Password does not match regexp $1
@@ -320,9 +320,9 @@ acl_ucreate=Can create new users?
 acl_uid=UIDs for new or modified users
 acl_umultiple=More than one user can have the same UID
 acl_uuid=UIDs of existing users can be changed
-acl_ugroups=Allowed groups for new or modifed users
+acl_ugroups=Allowed groups for new or modified users
 acl_all=All
-acl_shells=Allowed shells for new or modifed users
+acl_shells=Allowed shells for new or modified users
 acl_any=Any
 acl_listed=Listed..
 acl_home=Home directories must be under

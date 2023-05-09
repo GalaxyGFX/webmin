@@ -2,9 +2,6 @@ index_refresh=Aktualizujte moduly
 index_refreshmsg=Znovu zkontrolujte všechny nainstalované servery všech modulů Webmin a aktualizujte ty, které se zobrazují v kategorii „Nepoužité moduly“.
 
 access_local=Zahrnout místní síť do seznamu
-access_elibwrap=Řízení přístupu IP pomocí modulů TCP není k dispozici, protože není nainstalován modul Perl $1.
-access_libwrapcpan=<a href='$1'>Klikněte sem</a>, chcete-li, aby Webmin automaticky nainstaloval chybějící modul Perl.
-
 access_eip6='$1' není kompletní IPv6 nebo síťová adresa
 access_ecidr6='$1' není platná velikost sítě IPv6
 access_ecidr8=Velikost sítě IPv6 '$1' musí být dělitelná 8
@@ -22,6 +19,10 @@ bind_maxconns_per_net=Maximální počet souběžných připojení na síť
 bind_emaxconns=Maximální počet souběžných připojení musí být číslo větší než 1
 bind_emaxconns_per_ip=Maximální počet souběžných připojení na IP musí být číslo větší než 1
 bind_emaxconns_per_net=Maximální počet souběžných připojení v síti musí být číslo větší než 1
+bind_maxlifetime=Maximální životnost procesu Webmin
+bind_maxlifetime_def=Neomezený
+bind_maxlifetime_secs=sekundy
+bind_emaxlifetime=Maximální životnost procesu musí být číslo větší než 60 sekund
 
 log_global=&lt;Globální akce&gt;
 log_sched=Protokolovat naplánované funkce?
@@ -38,11 +39,20 @@ mods_checksig=Zkontrolovat podpisový soubor pro stažené moduly?
 
 os_perllib=Další cesty knihovny Perl
 os_incorrect=Operační systém $1 byl upgradován na verzi $2
+os_release_notes=Poznámky k vydání
 os_usermin=Aktualizujte také Usermin OS
+
+lang_title=Jazyk a národní prostředí
+lang_title2=Jazyk a národní prostředí Webmin
+lang_lang=Jazyk
+lang_locale=Národní prostředí
+lang_dateformat=Formát zobrazení data
+lang_dateformat_dd/mon/yyyy=dd/mon/yyyy (tj. 16. září 2001)
 
 ssl_deny=Verze protokolu SSL k odmítnutí
 ssl_compression=Povolit komprimované připojení SSL?
 ssl_honorcipherorder=Vynutit použití serveru definované šifrové objednávky?
+ssl_hsts=Vynutit SSL s hlavičkou HSTS
 ssl_extracasdef=Stejné jako globální nastavení SSL
 ssl_extracasnone=Žádné pro tuto IP adresu
 ssl_extracasbelow=Zadáno níže ..
@@ -70,6 +80,7 @@ ssl_already2=Dříve vygenerovaná žádost o podpis certifikátu :
 ssl_letsdesc=Pojďme šifrovat je bezplatná, automatizovaná a otevřená certifikační autorita, kterou lze použít k vygenerování certifikátu SSL pro použití serverem Webmin.
 ssl_letserr=Bohužel, Pojďme se zašifrovat ve vašem systému nelze použít: $1.
 ssl_letserr2=Alternativně zkontrolujte stránku <a href='$1'>konfigurace modulu</a> a ujistěte se, že používáte správnou cestu k příkazu <tt>letsencrypt</tt>.
+
 ssl_letsdesc2=Tuto stránku lze použít k vyžádání nového certifikátu, který přepíše všechny ostatní aktuálně nakonfigurované v systému Webmin. Služba Let's Encrypt však vyžaduje, aby bylo vaše vlastnictví domény certifikátů ověřeno kontrolou, zda tento systém hostuje web pro danou doménu. To se provádí umístěním malého dočasného souboru do adresáře dokumentů na webu.
 ssl_letsheader=Možnosti nového certifikátu SSL
 ssl_letsdoms=Názvy hostitelů pro certifikát
@@ -98,6 +109,10 @@ newcsr_ok2=Tento CSR musí být zaslán podpisující autoritě, která vrátí 
 startpage_webminup=Zobrazit aktualizace Webmin na stránce Systémové informace?
 startpage_moduleup=Zobrazit aktualizace modulu na stránce Systémové informace?
 
+upgrade_setup=Spuštění skriptu <tt>setup.sh</tt> pro upgrade Webminu ..
+upgrade_setuprpm=Spuštěním <tt>RPM</tt> upgradujete Webmin ..
+upgrade_setupdeb=Spuštěním <tt>DPKG</tt> upgradujete Webmin ..
+upgrade_setuppackage=Spuštěním <tt>pkgadd</tt> upgradujete Webmin ..
 upgrade_eportage=Funkce aktualizace Webminu v současné době nefunguje, pokud jste nainstalovali z balíčku Portage. Místo toho upgradujte pomocí nástrojů Portage.
 upgrade_src=Upgradujte webmin z
 upgrade_opts=Možnosti upgradu
@@ -130,9 +145,13 @@ session_cmddef0=Změna hesel pomocí příkazu:
 session_ecmd=Chybějící nebo neplatný příkaz ke změně hesla
 session_banner=Pre-login banner
 session_md5=Formát hashování hesla webmin
-session_sha512=Použijte šifrování SHA512
-session_emd5mod=Nelze použít šifrování MD5, protože není nainstalován modul Perl $1.
-session_esha512mod=Šifrování SHA512 nelze použít, protože není nainstalován modul Perl $1.
+session_md5off=Určit automaticky
+session_md5on=Použijte formát hash <tt>MD5</tt>
+session_sha512=Použijte formát hash <tt>SHA512</tt>
+session_yescrypt=Použijte formát hash <tt>yescrypt</tt>
+session_emd5mod=Formát hash MD5 nelze použít, protože není nainstalován modul Perl $1
+session_esha512mod=Formát hash SHA512 nelze použít, protože není nainstalován modul Perl $1
+session_eyescrypt=hashovací formát yescrypt nelze použít, protože není nainstalován modul Perl $1
 session_blocklock=Zamkněte také uživatele pomocí neúspěšných přihlášení
 session_passapi=Povolit vzdálenou změnu hesla API?
 session_passapi0=API deaktivováno
@@ -185,6 +204,7 @@ advanced_precache0=Žádný
 advanced_precache1=Textové soubory v anglickém jazyce
 advanced_precache2=Soubory odpovídající vzorům prostředí $1
 advanced_eprecache=Chybějící seznam vzorů prostředí pro předběžnou vyrovnávací paměť
+advanced_etempallowed=Adresář dočasných souborů $1 je systémový adresář
 advanced_chattr=Povolit úpravu neměnných souborů?
 advanced_sclass=Třída IO pro naplánované úlohy
 advanced_sprio=IO priorita pro naplánované úlohy
@@ -327,6 +347,16 @@ web_expirespaths=Časy mezipaměti na straně klienta založené na cestě URL
 web_expirespath=Cesta regulární výraz
 web_expirestime=Čas mezipaměti v sekundách
 web_eexpires2=Chybějící nebo nečíselný čas mezipaměti na straně klienta v řádku $1
+web_rediruurl=Adresa URL přesměrování přepínače po přihlášení
+web_redirdesc=Přepsání adresy URL interního přesměrování
+web_eredirurl='$1' obsahuje mezery a není platnou adresou URL
+web_redirhost=Přesměrovat hostitele
+web_eredirhost='$1' není platný název hostitele
+web_redirport=Port přesměrování
+web_redirpref=Předpona přesměrování
+web_eredirpref=Předpona musí začínat lomítkem
+web_eredirpref2=Předpona nesmí obsahovat mezery
+web_redirssl=Přesměrování SSL
 
 webmincron_title=Webmin naplánované funkce
 webmincron_emodule=Modul Webmin Cron Jobs není nainstalován!

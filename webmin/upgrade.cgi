@@ -11,6 +11,22 @@ $| = 1;
 $theme_no_table = 1;
 &ui_print_header(undef, $text{'upgrade_title'}, "");
 
+# Do we have an install dir?
+my $indir = $in{'dir'};
+
+# Is this a minimal install?
+my $mini_type;
+
+if (!$indir) {
+	my $install_dir = "$config_directory/install-dir";
+	if (-e $install_dir) {
+		$indir = &read_file_contents($install_dir);
+		$indir = &trim($indir);
+		$mini_type = -r "$indir/minimal-install" ? "-minimal" : "";
+		$indir = undef if (!-d $indir);
+		}
+	}
+
 # Save this CGI from being killed by the upgrade
 $SIG{'TERM'} = 'IGNORE';
 
@@ -19,16 +35,13 @@ if ($in{'source'} == 0) {
 	&error_setup(&text('upgrade_err1', $in{'file'}));
 	$file = $in{'file'};
 	if (!-r $file) { &inst_error($text{'upgrade_efile'}); }
-	if ($file =~ /webmin-(\d+\.\d+)/) {
+	if ($file =~ /webmin-(\d+\.\d+)(\-(\d+))?/) {
 		$version = $1;
+		$release = $3;
+		$full = $version.($release ? "-$release" : "");
 		}
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		&check_inst_version($full);
 		}
 	}
 elsif ($in{'source'} == 1) {
@@ -42,8 +55,10 @@ elsif ($in{'source'} == 1) {
 	open(MOD, ">$file");
 	print MOD $in{'upload'};
 	close(MOD);
-	if ($in{'upload_filename'} =~ /webmin-(\d+\.\d+)/) {
+	if ($in{'upload_filename'} =~ /webmin-(\d+\.\d+)(\-(\d+))?/) {
 		$version = $1;
+		$release = $3;
+		$full = $version.($release ? "-$release" : "");
 		}
 	}
 elsif ($in{'source'} == 2) {
@@ -51,40 +66,42 @@ elsif ($in{'source'} == 2) {
 	&error_setup($text{'upgrade_err3'});
 	($ok, $version, $release) = &get_latest_webmin_version();
 	$ok || &inst_error($version);
+	$full = $version.($release ? "-$release" : "");
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		# Is the new version and release actually newer
+		&check_inst_version($full);
 		}
+	my $sfx;
 	if ($in{'mode'} eq 'rpm') {
 		# Downloading RPM
 		$release ||= 1;
 		$progress_callback_url = &convert_osdn_url(
 		    "http://$osdn_host/webadmin/webmin-${version}-${release}.noarch.rpm");
+		$sfx = ".rpm";
 		}
 	elsif ($in{'mode'} eq 'deb') {
 		# Downloading Debian package
 		$release = $release ? "-".$release : "";
 		$progress_callback_url = &convert_osdn_url(
 		    "http://$osdn_host/webadmin/webmin_${version}${release}_all.deb");
+		$sfx = ".deb";
 		}
 	elsif ($in{'mode'} eq 'solaris-pkg') {
 		# Downloading my Solaris package
 		$release = $release ? "-".$release : "";
 		$progress_callback_url = &convert_osdn_url(
 		    "http://$osdn_host/webadmin/webmin-${version}${release}.pkg.gz");
+		$sfx = ".pkg";
 		}
 	else {
 		# Downloading tar.gz file
 		$release = $release ? "-".$release : "";
 		$progress_callback_url = &convert_osdn_url(
-			"http://$osdn_host/webadmin/webmin-${version}${release}.tar.gz");
+			"http://$osdn_host/webadmin/webmin-${version}${release}${mini_type}.tar.gz");
+		$sfx = ".tar.gz";
 		}
 	($host, $port, $page, $ssl) = &parse_http_url($progress_callback_url);
-	$file = &transname();
+	$file = &transname().$sfx;
 	&http_download($host, $port, $page, $file, \$error,
 		       \&progress_callback, $ssl);
 	$error && &inst_error($error);
@@ -96,6 +113,9 @@ elsif ($in{'source'} == 5) {
 	$file = &transname();
 	$in{'url'} = &convert_osdn_url($in{'url'});
 	$progress_callback_url = $in{'url'};
+	if ($in{'url'} =~ /(\.(deb|rpm|pkg|tar.gz))$/i) {
+		$file .= $1;
+		}
 	if ($in{'url'} =~ /^(http|https):\/\/([^\/]+)(\/.*)$/) {
 		$ssl = $1 eq 'https';
 		$host = $2; $page = $3; $port = $ssl ? 443 : 80;
@@ -111,8 +131,10 @@ elsif ($in{'source'} == 5) {
 	else { &inst_error($text{'upgrade_eurl'}); }
 	$need_unlink = 1;
 	$error && &inst_error($error);
-	if ($in{'url'} =~ /webmin-(\d+\.\d+)/) {
+	if ($in{'url'} =~ /webmin-(\d+\.\d+)(\-(\d+))?/) {
 		$version = $1;
+		$release = $3;
+		$full = $version.($release ? "-$release" : "");
 		}
 	}
 elsif ($in{'source'} == 3) {
@@ -152,14 +174,14 @@ if ($in{'sig'}) {
 			if ($in{'source'} == 2) {
 				# Download the key for this tar.gz
 				my ($sigtemp, $sigerror);
-				&http_download($update_host, $update_port, "/download/sigs/webmin-$version.tar.gz-sig.asc", \$sigtemp, \$sigerror);
+				&http_download($update_host, $update_port, "/download/sigs/webmin-${full}${mini_type}.tar.gz-sig.asc", \$sigtemp, \$sigerror);
 				if ($sigerror) {
 					$ec = 4;
 					$emsg = &text('upgrade_edownsig',
 						      $sigerror);
 					}
 				else {
-					my $data =&read_file_contents($file);
+					my $data = &read_file_contents($file);
 					my ($vc, $vmsg) =
 					    &verify_data($data, $sigtemp);
 					if ($vc > 1) {
@@ -184,7 +206,7 @@ if ($in{'sig'}) {
 		print "$emsg<p>\n";
 		}
 	else {
-		print "$text{'upgrade_sigok'}<p>\n";
+		print "<p></p>$text{'upgrade_sigok'}<p>\n";
 		}
 	}
 else {
@@ -221,16 +243,15 @@ if ($in{'mode'} eq 'rpm') {
 		close(RPM);
 		}
 	$out = &backquote_command("rpm -qp $qfile");
-	$out =~ /(^|\n)\Q$rpmname\E-(\d+\.\d+)/ ||
+	$out =~ /(^|\n)\Q$rpmname\E-(\d+\.\d+)-(\d+)/ ||
+	        /(^|\n)\Q$rpmname\E-(\d+\.\d+)/ ||
 		&inst_error($text{'upgrade_erpm'});
 	$version = $2;
+	$release = $3;
+	$full = $version.($release ? "-$release" : "");
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		# Is the new version and release actually newer
+		&check_inst_version($full);
 		}
 
 	# Install the RPM
@@ -239,12 +260,12 @@ if ($in{'mode'} eq 'rpm') {
 	print "<pre>";
 	if ($in{'force'}) {
 		&proc::safe_process_exec(
-			"rpm -U --force --nodeps $qfile", 0, 0,
+			"rpm -Uv --force --nodeps $qfile", 0, 0,
 			STDOUT, undef, 1, 1);
 		}
 	else {
 		&proc::safe_process_exec(
-			"rpm -U --ignoreos --ignorearch --nodeps $qfile", 0, 0,
+			"rpm -Uv --ignoreos --ignorearch --nodeps $qfile", 0, 0,
 			STDOUT, undef, 1, 1);
 		}
 	unlink($file) if ($need_unlink);
@@ -262,14 +283,10 @@ elsif ($in{'mode'} eq 'deb') {
 		&inst_error($text{'upgrade_edeb'});
 	$out =~ /Version:\s+(\S+)/ ||
 		&inst_error($text{'upgrade_edeb'});
-	$version = $1;
+	$full = $1;
+	($version, $release) = split(/\-/, $full);
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		&check_inst_version($full);
 		}
 
 	# Install the package
@@ -329,8 +346,10 @@ elsif ($in{'mode'} eq 'solaris-pkg' || $in{'mode'} eq 'sun-pkg') {
 	# package.  It would be interesting, however, if this were embedded in
 	# a remote script that could be nohup'd and it would restart the server.
 	chdir("/");
+	my $pre_install_script = "$config_directory/.pre-install";
+	my $stop_script = -r $pre_install_script ? $pre_install_script : "$config_directory/stop";
 	&proc::safe_process_exec_logged(
-		"$config_directory/stop", 0, 0, STDOUT, undef, 1,1);
+		$stop_script, 0, 0, STDOUT, undef, 1,1);
 
 	$in{'root'} = '/';
 	$in{'adminfile'} = '$module_root_directory/adminupgrade';
@@ -340,6 +359,8 @@ elsif ($in{'mode'} eq 'solaris-pkg' || $in{'mode'} eq 'sun-pkg') {
 	$ENV{'config_dir'} = $config_directory;
 	$ENV{'webmin_upgrade'} = 1;
 	$ENV{'autothird'} = 1;
+	$ENV{'nostop'} = 1;
+	$ENV{'nostart'} = 1;
 	$ENV{'tempdir'} = $gconfig{'tempdir'};
 	print "<p>",$text{'upgrade_setup'},"<p>\n";
 	print "<pre>";
@@ -356,13 +377,13 @@ elsif ($in{'mode'} eq 'solaris-pkg' || $in{'mode'} eq 'sun-pkg') {
 		$dir = $1;
 		}
 
-	$setup = $in{'dir'} ? "./setup.sh '$in{'dir'}'" : "./setup.sh";
+	$setup = $indir ? "./setup.sh '$indir'" : "./setup.sh";
 	print "Package Directory: $dir<br>";
 	print  "cd $dir && ./setup.sh<br>";
 	&proc::safe_process_exec(
 		"cd $dir && ./setup.sh", 0, 0, STDOUT, undef, 1, 1);
 	&proc::safe_process_exec_logged(
-		"$config_directory/start", 0, 0, STDOUT, undef, 1,1);
+		"$config_directory/.post-install", 0, 0, STDOUT, undef, 1,1);
 	print "</pre>\n";
 	}
 elsif ($in{'mode'} eq 'gentoo') {
@@ -378,12 +399,7 @@ elsif ($in{'mode'} eq 'gentoo') {
 	close(EMERGE);
 	$version || &inst_error($text{'upgrade_egentoo'});
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		&check_inst_version($version);
 		}
 
 	# Install the Gentoo package
@@ -395,7 +411,7 @@ elsif ($in{'mode'} eq 'gentoo') {
 	}
 else {
 	# Check if it is a webmin tarfile
-	open(TAR, "tar tf $file 2>&1 |");
+	open(TAR, "tar tf $qfile 2>&1 |");
 	while(<TAR>) {
 		s/\r|\n//g;
 		if (/^webmin-([0-9\.]+)\//) {
@@ -435,16 +451,11 @@ else {
 			}
 		}
 	if (!$in{'force'}) {
-		if ($version == &get_webmin_version()) {
-			&inst_error(&text('upgrade_elatest', $version));
-			}
-		elsif ($version <= &get_webmin_version()) {
-			&inst_error(&text('upgrade_eversion', $version));
-			}
+		&check_inst_version($version);
 		}
 
 	# Work out where to extract
-	if ($in{'dir'}) {
+	if ($indir) {
 		# Since we are currently installed in a fixed directory,
 		# just extract to a temporary location
 		$extract = &transname();
@@ -503,7 +514,7 @@ else {
 	$ENV{'deletedold'} = 1 if ($in{'delete'});
 	print "<p>",$text{'upgrade_setup'},"<p>\n";
 	print "<pre>";
-	$setup = $in{'dir'} ? "./setup.sh '$in{'dir'}'" : "./setup.sh";
+	$setup = $indir ? "./setup.sh '$indir'" : "./setup.sh";
 	&proc::safe_process_exec(
 		"cd $extract/webmin-$version && $setup", 0, 0,
 		STDOUT, undef, 1, 1);
@@ -511,11 +522,11 @@ else {
 	if (!$?) {
 		if ($in{'delete'}) {
 			# Can delete the old root directory
-			system("rm -rf \"$root_directory\"");
+			system("rm -rf ".quotemeta($root_directory));
 			}
-		elsif ($in{'dir'}) {
+		elsif ($indir) {
 			# Can delete the temporary source directory
-			system("rm -rf \"$extract\"");
+			system("rm -rf ".quotemeta($extract));
 			}
 		&lock_file("$config_directory/config");
 		$gconfig{'upgrade_delete'} = $in{'delete'};
@@ -564,8 +575,21 @@ sub inst_error
 {
 unlink($file) if ($need_unlink);
 unlink($updatestemp);
-print "<b>$main::whatfailed : $_[0]</b> <p>\n";
+print "$main::whatfailed : $_[0] <p>\n";
 &ui_print_footer("", $text{'index_return'});
 exit;
 }
 
+sub check_inst_version
+{
+my ($full) = @_;
+return if ($done_check_inst_version++);	  # Full version may have been checked
+					  # in a previous call
+my $curr_full = &get_webmin_full_version();
+if (&compare_version_numbers($full, $curr_full) == 0) {
+	&inst_error(&text('upgrade_elatest', $full));
+	}
+elsif (&compare_version_numbers($full, $curr_full) < 0) {
+	&inst_error(&text('upgrade_eversion', $full));
+	}
+}

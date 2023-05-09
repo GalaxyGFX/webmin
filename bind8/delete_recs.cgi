@@ -2,6 +2,8 @@
 # Delete multiple records from a zone file
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 # Globals
 our (%access, %text, %in, %config);
 
@@ -29,6 +31,7 @@ if (!$in{'confirm'} && $config{'confirm_rec'}) {
 		[ [ 'zone', $in{'zone'} ],
 		  [ 'view', $in{'view'} ],
 		  [ 'rev', $in{'rev'} ],
+		  [ 'type', $in{'type'} ],
 		  map { [ 'd', $_ ] } @d ],
 		[ [ 'confirm', $text{'drecs_ok'} ] ],
 		);

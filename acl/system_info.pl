@@ -1,6 +1,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%text, $remote_user, %sessiondb, $module_name);
 do 'acl-lib.pl';
 
@@ -28,10 +30,12 @@ if (@logins) {
 		}
 	my $html = &ui_columns_start([ $text{'sessions_host'},
 				       $text{'sessions_login'},
-				       $text{'sessions_state'} ]);
+				       $text{'sessions_state'},
+				       $text{'sessions_action'} ]);
 	my $open = 0;
 	foreach my $l (@logins) {
 		my $state;
+		my $candel = 0;
 		if ($l->[0] =~ /^\!/) {
 			$state = $text{'sessions_out'};
 			}
@@ -41,17 +45,35 @@ if (@logins) {
 			}
 		else {
 			$state = $text{'sessions_in'};
+			$candel = 1;
 			if ($l->[2] ne $ENV{'REMOTE_HOST'}) {
 				$open++;
 				$state = "<font color=orange>$state</font>";
 				}
 			}
-		$main::theme_allow_make_date = 1;
-		$html .= &ui_columns_row([ $l->[2],
-					   &make_date($l->[1]),
-					   $state ]);
+		my @links;
+		if (&foreign_available("webminlog")) {
+		      push(@links,
+		         &ui_link("@{[&get_webprefix()]}/webminlog/search.cgi?uall=1&mall=1&tall=1&wall=1&fall=1&sid=$l->[3]",
+		         $text{'sessions_lview'}))
+			}
+		if ($candel) {
+		      push(@links,
+		         &ui_link("@{[&get_webprefix()]}/acl/delete_session.cgi?id=$l->[3]&redirect_ref=1",
+		         $text{'sessions_kill'}))
+			}
+		$html .= &ui_columns_row([
+		          $l->[2],
+		          &make_date($l->[1]),
+		          $state,
+			  &ui_links_row(\@links) ]);
 		}
 	$html .= &ui_columns_end();
+	if (&foreign_available("acl")) {
+		$html .= &ui_link("@{[&get_webprefix()]}/acl/list_sessions.cgi",
+				  $text{'sessions_all'}, undef,
+				  "title=\"$text{'sessions_title'}\"");
+		}
 	push(@rv, { 'type' => 'html',
 		    'desc' => $text{'logins_title'},
 		    'open' => $open,

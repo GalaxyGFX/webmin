@@ -76,6 +76,18 @@ elsif ($gconfig{'os_type'} eq 'windows') {
 	$init_mode = "win32";
 	}
 
+# Do init scripts support start and stop custom messages?
+if ($init_mode eq "init" && $gconfig{'os_type'} =~ /^(osf1|hpux)$/) {
+	$supports_start_stop_msg = 1;
+	}
+else {
+	$supports_start_stop_msg = 0;
+	}
+
+# Use the chkconfig command to enable actions?
+$use_chkconfig = &has_command("chkconfig") &&
+		 $gconfig{'os_type'} ne 'syno-linux';
+
 =head2 runlevel_actions(level, S|K)
 
 Return a list of init.d actions started or stopped in some run-level, each of
@@ -109,7 +121,6 @@ local(@rv);
 opendir(DIR, $config{init_base});
 foreach (readdir(DIR)) {
 	if (/^rc([A-z0-9])\.d$/ || /^(boot)\.d$/) {
-		#if (!$config{show_opts} && $1 < 1) { next; }
 		push(@rv, $1);
 		}
 	}
@@ -187,6 +198,21 @@ sub action_filename
 return $_[0] =~ /^\// ? $_[0] : "$config{init_dir}/$_[0]";
 }
 
+=head2 action_unit(name)
+
+Returns systemd service unit name (to avoid a clash with init)
+unless full unit name is passed
+
+=cut
+sub action_unit
+{
+my ($unit) = @_;
+my $units_piped = &get_systemd_unit_types('|');
+$unit .= ".service"
+	if ($unit !~ /\.($units_piped)$/);
+return $unit;
+}
+
 =head2 runlevel_filename(level, S|K, order, name)
 
 Returns the path to the actual script run at boot for some action, such as
@@ -222,12 +248,7 @@ while(-r $file) {
 	else { $file = $file."_1"; }
 	}
 &lock_file($file);
-if ($config{soft_links}) {
-	&symlink_file(&action_filename($_[0]), $file);
-	}
-else {
-	&link_file(&action_filename($_[0]), $file);
-	}
+&symlink_file(&action_filename($_[0]), $file);
 &unlock_file($file);
 }
 
@@ -432,15 +453,6 @@ if ($_[1]) {
 	}
 
 my $desc;
-if ($config{'daemons_dir'}) {
-	# First try the daemons file
-	my %daemon;
-	if ($_[0] =~ /\/([^\/]+)$/ &&
-	    &read_env_file("$config{'daemons_dir'}/$1", \%daemon) &&
-	    $daemon{'DESCRIPTIVE'}) {
-		return $daemon{'DESCRIPTIVE'};
-		}
-	}
 if ($config{'chkconfig'}) {
 	# Find the redhat-style description: section
 	foreach (@lines) {
@@ -537,8 +549,7 @@ if ($init_mode eq "upstart") {
 	}
 elsif ($init_mode eq "systemd") {
 	# Check systemd service status
-	my $unit = $name;
-	$unit .= ".service" if ($unit !~ /\.service$/);
+	my $unit = &action_unit($name);
 	my $out = &backquote_command("systemctl show ".
 					quotemeta($unit)." 2>&1");
 	if ($out =~ /UnitFileState=(\S+)/ &&
@@ -568,10 +579,6 @@ if ($init_mode eq "init" || $init_mode eq "upstart" ||
 				$starting++ if (&indexof($l, @boot) >= 0);
 				}
 			}
-		}
-	if ($starting && $config{'daemons_dir'} &&
-	    &read_env_file("$config{'daemons_dir'}/$name", \%daemon)) {
-		$starting = lc($daemon{'ONBOOT'}) eq 'yes' ? 1 : 0;
 		}
 	return !$exists ? 0 : $starting ? 2 : 1;
 	}
@@ -643,9 +650,7 @@ my ($action, $desc, $start, $stop, $status, $opts) = @_;
 my $st = &action_status($action);
 return if ($st == 2);	# already exists and is enabled
 my ($daemon, %daemon);
-my $unit = $action;
-$unit .= ".service" if ($unit !~ /\.service$/);
-
+my $unit = &action_unit($action);
 if ($init_mode eq "upstart" && (!-r "$config{'init_dir'}/$action" ||
 				-r "/etc/init/$action.conf")) {
 	# Create upstart action if missing, as long as this isn't an old-style
@@ -678,8 +683,7 @@ if ($init_mode eq "upstart" && (!-r "$config{'init_dir'}/$action" ||
 		}
 	else {
 		# Need to create config
-		$start || &error("Upstart service $action cannot be created ".
-				"unless a command is given");
+		$start || &error("Upstart service $action does not exist");
 		&create_upstart_service($action, $desc, $start, undef,
 					$opts->{'fork'});
 		if (&has_command("insserv")) {
@@ -693,17 +697,15 @@ if ($init_mode eq "systemd" && (!-r "$config{'init_dir'}/$action" ||
 				&is_systemd_service($unit))) {
 	# Create systemd unit if missing, as long as this isn't an old-style
 	# init script
-	my $cfile = &get_systemd_root($action)."/".$unit;
-	if (!-r $cfile) {
+	my $st = &action_status($action);
+	if ($st == 0) {
 		# Need to create config
-		$start || &error("Systemd service $action cannot be created ".
-				"unless a command is given");
+		$start || &error("Systemd service $action does not exist");
 		&create_systemd_service($unit, $desc, $start, $stop, undef,
 					$opts->{'fork'}, $opts->{'pidfile'},
 					$opts->{'exit'}, $opts->{'opts'});
 		}
-	&system_logged("systemctl unmask ".
-		       quotemeta($unit)." >/dev/null 2>&1");
+	&unmask_action($unit);
 	&system_logged("systemctl enable ".
 		       quotemeta($unit)." >/dev/null 2>&1");
 	return;
@@ -711,10 +713,6 @@ if ($init_mode eq "systemd" && (!-r "$config{'init_dir'}/$action" ||
 if ($init_mode eq "init" || $init_mode eq "local" || $init_mode eq "upstart" ||
     $init_mode eq "systemd") {
 	# In these modes, we create a script to run
-	if ($config{'daemons_dir'} &&
-	    &read_env_file("$config{'daemons_dir'}/$action", \%daemon)) {
-		$daemon++;
-		}
 	my $fn;
 	if ($init_mode eq "init" || $init_mode eq "upstart" ||
             $init_mode eq "systemd") {
@@ -736,19 +734,13 @@ if ($init_mode eq "init" || $init_mode eq "local" || $init_mode eq "upstart" ||
 		}
 
 	my $need_links = 0;
-	if ($st == 1 && $daemon) {
-		# Just update daemons file
-		$daemon{'ONBOOT'} = 'yes';
-		&lock_file("$config{'daemons_dir'}/$action");
-		&write_env_file("$config{'daemons_dir'}/$action", \%daemon);
-		&unlock_file("$config{'daemons_dir'}/$action");
-		}
-	elsif ($st == 1) {
+	if ($st == 1) {
 		# Just need to create links (later)
 		$need_links++;
 		}
 	elsif ($desc) {
 		# Need to create the init script
+		$start || $stop || &error("Init script $action does not exist");
 		&lock_file($fn);
 		&open_tempfile(ACTION, ">$fn");
 		&print_tempfile(ACTION, "#!/bin/sh\n");
@@ -829,7 +821,7 @@ if ($init_mode eq "init" || $init_mode eq "local" || $init_mode eq "upstart" ||
 			    $init_mode eq "systemd")) {
 		my $data = &read_file_contents($fn);
 		my $done = 0;
-		if (&has_command("chkconfig") && !$config{'no_chkconfig'} &&
+		if ($use_chkconfig &&
 		    (@chk && $chk[3] || $data =~ /Default-Start:/i)) {
 			# Call the chkconfig command to link up
 			&system_logged("chkconfig --add ".quotemeta($action));
@@ -839,8 +831,7 @@ if ($init_mode eq "init" || $init_mode eq "local" || $init_mode eq "upstart" ||
 				$done = 1;
 				}
 			}
-		elsif (&has_command("insserv") && !$config{'no_chkconfig'} &&
-		       $data =~ /Default-Start:/i) {
+		elsif (&has_command("insserv") && $data =~ /Default-Start:/i) {
 			# Call the insserv command to enable
 			my $ex = &system_logged("insserv ".quotemeta($action).
 				       " >/dev/null 2>&1");
@@ -1062,9 +1053,7 @@ sub disable_at_boot
 my ($name) = @_;
 my $st = &action_status($_[0]);
 return if ($st == 0);	# does not exist
-my $unit = $_[0];
-$unit .= ".service" if ($unit !~ /\.service$/);
-
+my $unit = &action_unit($_[0]);
 if ($init_mode eq "upstart") {
 	# Just use insserv to disable, and comment out start line in .conf file
 	if (&has_command("insserv")) {
@@ -1101,20 +1090,11 @@ elsif ($init_mode eq "systemd") {
 if ($init_mode eq "init" || $init_mode eq "upstart" ||
     $init_mode eq "systemd") {
 	# Unlink or disable init script
-	my ($daemon, %daemon);
 	my $file = &action_filename($_[0]);
 	my @chk = &chkconfig_info($file);
 	my $data = &read_file_contents($file);
 
-	if ($config{'daemons_dir'} &&
-	    &read_env_file("$config{'daemons_dir'}/$_[0]", \%daemon)) {
-		# Update daemons file
-		$daemon{'ONBOOT'} = 'no';
-		&lock_file("$config{'daemons_dir'}/$_[0]");
-		&write_env_file("$config{'daemons_dir'}/$_[0]", \%daemon);
-		&unlock_file("$config{'daemons_dir'}/$_[0]");
-		}
-	elsif (&has_command("chkconfig") && !$config{'no_chkconfig'} && @chk) {
+	if ($use_chkconfig && @chk) {
 		# Call chkconfig to remove the links
 		&system_logged("chkconfig ".quotemeta($_[0])." off");
 		}
@@ -1434,8 +1414,10 @@ elsif ($action_mode eq "systemd") {
 	my $out = &backquote_command(
 		"systemctl is-failed ".quotemeta($name)." 2>/dev/null");
 	$out =~ s/\r?\n//g;
+	$out = lc($out);
 	return $out eq "active" ? 1 : 
-	       $out eq "inactive" || $out eq "failed" ? 0 : -1;
+	       $out eq "inactive" || $out eq "failed" ||
+		$out eq "active (exited)" ? 0 : -1;
 	}
 elsif ($action_mode eq "launchd") {
 	my @agents = &list_launchd_agents();
@@ -1445,6 +1427,39 @@ elsif ($action_mode eq "launchd") {
 else {
 	return -1;
 	}
+}
+
+=head2 mask_action(name)
+
+Mask systemd target
+
+=cut
+sub mask_action
+{
+my ($name) = @_;
+$name = &action_unit($name);
+return -1 if (!&is_systemd_service($name));
+if ($init_mode eq "systemd") {
+	return &system_logged("systemctl mask ".
+		       quotemeta($name)." >/dev/null 2>&1");
+	}
+return -1;
+}
+
+=head2 unmask_action(name)
+
+Unmask systemd target
+
+=cut
+sub unmask_action
+{
+my ($name) = @_;
+$name = &action_unit($name);
+if ($init_mode eq "systemd") {
+	return &system_logged("systemctl unmask ".
+		       quotemeta($name)." >/dev/null 2>&1");
+	}
+return -1;
 }
 
 =head2 list_action_names()
@@ -2098,7 +2113,7 @@ my $ifile = "/etc/init.d/$name";
 &unlink_logged($cfile, $ifile);
 }
 
-=head2 list_systemd_services
+=head2 list_systemd_services(skip-init)
 
 Returns a list of all known systemd services, each of which is a hash ref
 with 'name', 'desc', 'boot', 'status' and 'pid' keys. Also includes init.d
@@ -2108,6 +2123,13 @@ systemd automatically includes init scripts).
 =cut
 sub list_systemd_services
 {
+my ($noinit) = @_;
+if (@list_systemd_services_cache && !$noinit) {
+	return @list_systemd_services_cache;
+	}
+
+my $units_piped = &get_systemd_unit_types('|');
+
 # Get all systemd unit names
 my $out = &backquote_command("systemctl list-units --full --all -t service --no-legend");
 my $ex = $?;
@@ -2115,7 +2137,7 @@ foreach my $l (split(/\r?\n/, $out)) {
 	$l =~ s/^[^a-z0-9\-\_\.]+//i;
 	my ($unit, $loaded, $active, $sub, $desc) = split(/\s+/, $l, 5);
 	my $a = $unit;
-	$a =~ s/\.service$//;
+	$a =~ s/\.($units_piped)$//;
 	my $f = &action_filename($a);
 	if ($unit ne "UNIT" && $loaded eq "loaded" && !-r $f) {
 		push(@units, $unit);
@@ -2133,7 +2155,7 @@ closedir(UNITS);
 # Also add units from list-unit-files that also don't show up
 $out = &backquote_command("systemctl list-unit-files -t service --no-legend");
 foreach my $l (split(/\r?\n/, $out)) {
-	if ($l =~ /^(\S+\.service)\s+disabled/ ||
+	if ($l =~ /^(\S+\.($units_piped))\s+disabled/ ||
 	    $l =~ /^(\S+)\s+disabled/) {
 		push(@units, $1);
 		}
@@ -2148,8 +2170,8 @@ foreach my $l (split(/\r?\n/, $out)) {
 @units = &unique(@units);
 
 # Filter out templates
-my @templates = grep { /\@$/ || /\@\.service$/ } @units;
-@units = grep { !/\@$/ && !/\@\.service$/ } @units;
+my @templates = grep { /\@$/ || /\@\.($units_piped)$/ } @units;
+@units = grep { !/\@$/ && !/\@\.($units_piped)$/ } @units;
 
 # Dump state of all of them, 100 at a time
 my %info;
@@ -2159,25 +2181,33 @@ while(@units) {
 	while(@args < 100 && @units) {
 		push(@args, shift(@units));
 		}
-	$out = &backquote_command("systemctl show -- ".join(" ", @args).
-				  " 2>/dev/null");
+	my $out = &backquote_command("systemctl show --property=Id,Description,UnitFileState,ActiveState,SubState,ExecStart,ExecStop,ExecReload,ExecMainPID,FragmentPath ".join(" ", @args)." 2>/dev/null");
 	my @lines = split(/\r?\n/, $out);
 	my $curr;
+	my @units;
+	if (@lines) {
+		$curr = { };
+		push(@units, $curr);
+		}
 	foreach my $l (@lines) {
-		my ($n, $v) = split(/=/, $l, 2);
-		next if (!$n);
-		if (lc($n) eq 'id') {
-			$curr = $v;
-			$info{$curr} ||= { };
+		if ($l eq "") {
+			# Start of a new unit section
+			$curr = { };
+			push(@units, $curr);
 			}
-		if ($curr) {
-			$info{$curr}->{$n} = $v;
+		else {
+			# A property in the current one
+			my ($n, $v) = split(/=/, $l, 2);
+			$curr->{$n} = $v;
 			}
+		}
+	foreach my $u (@units) {
+		$info{$u->{'Id'}} = $u if ($u->{'Id'});
 		}
 	$ecount++ if ($?);
 	}
 if ($ecount && keys(%info) < 2) {
-	&error("Failed to read systemd units : $out");
+	&error("Failed to read systemd units : <pre>$out</pre>");
 	}
 
 # Extract info we want
@@ -2190,8 +2220,13 @@ foreach my $name (keys %info) {
 		    'desc' => $i->{'Description'},
 		    'legacy' => 0,
 		    'boot' => $i->{'UnitFileState'} eq 'enabled' ? 1 :
-			      $i->{'UnitFileState'} eq 'static' ? 2 : 0,
+		              $i->{'UnitFileState'} eq 'static' ? 2 : 
+		              $i->{'UnitFileState'} eq 'masked' ? -1 : 0,
 		    'status' => $i->{'ActiveState'} eq 'active' ? 1 : 0,
+		    'substatus' => $i->{'SubState'},
+		    'fullstatus' => $i->{'SubState'} ?
+		        "@{[ucfirst($i->{'ActiveState'})]} ($i->{'SubState'})" :
+		         ucfirst($i->{'ActiveState'}),
 		    'start' => $i->{'ExecStart'},
 		    'stop' => $i->{'ExecStop'},
 		    'reload' => $i->{'ExecReload'},
@@ -2201,27 +2236,32 @@ foreach my $name (keys %info) {
 	}
 
 # Also add legacy init scripts
-my @rls = &get_inittab_runlevel();
-foreach my $a (&list_actions()) {
-	$a =~ s/\s+\d+$//;
-	my $f = &action_filename($a);
-	my $s = { 'name' => $a,
-		  'legacy' => 1 };
-	$s->{'boot'} = 0;
-	foreach my $rl (@rls) {
-		my $l = glob("/etc/rc$rl.d/S*$a");
-		$s->{'boot'} = 1 if ($l);
+if (!$noinit) {
+	my @rls = &get_inittab_runlevel();
+	foreach my $a (&list_actions()) {
+		$a =~ s/\s+\d+$//;
+		my $f = &action_filename($a);
+		my $s = { 'name' => $a,
+			  'legacy' => 1 };
+		$s->{'boot'} = 0;
+		foreach my $rl (@rls) {
+			my $l = glob("/etc/rc$rl.d/S*$a");
+			$s->{'boot'} = 1 if ($l);
+			}
+		$s->{'desc'} = &init_description($f);
+		my $hasarg = &get_action_args($f);
+		if ($hasarg->{'status'}) {
+			my $r = &action_running($f);
+			$s->{'status'} = $r;
+			}
+		push(@rv, $s);
 		}
-	$s->{'desc'} = &init_description($f);
-	my $hasarg = &get_action_args($f);
-	if ($hasarg->{'status'}) {
-		my $r = &action_running($f);
-		$s->{'status'} = $r;
-		}
-	push(@rv, $s);
 	}
 
-return sort { $a->{'name'} cmp $b->{'name'} } @rv;
+# Return actions sorted by name
+@rv = sort { $a->{'name'} cmp $b->{'name'} } @rv;
+@list_systemd_services_cache = @rv if (!$noinit);
+return @rv;
 }
 
 =head2 start_systemd_service(name)
@@ -2306,6 +2346,15 @@ my $cfile = &get_systemd_root($name)."/".$name;
 &open_lock_tempfile(CFILE, ">$cfile");
 &print_tempfile(CFILE, "[Unit]\n");
 &print_tempfile(CFILE, "Description=$desc\n") if ($desc);
+if (ref($opts)) {
+	&print_tempfile(CFILE, "Before=$opts->{'before'}\n") if ($opts->{'before'});
+	&print_tempfile(CFILE, "After=$opts->{'after'}\n") if ($opts->{'after'});
+	&print_tempfile(CFILE, "Wants=$opts->{'wants'}\n") if ($opts->{'wants'});
+	&print_tempfile(CFILE, "Requires=$opts->{'requires'}\n") if ($opts->{'requires'});
+	&print_tempfile(CFILE, "Conflicts=$opts->{'conflicts'}\n") if ($opts->{'conflicts'});
+	&print_tempfile(CFILE, "OnFailure=$opts->{'onfailure'}\n") if ($opts->{'onfailure'});
+	&print_tempfile(CFILE, "OnSuccess=$opts->{'onsuccess'}\n") if ($opts->{'onsuccess'});
+	}
 &print_tempfile(CFILE, "\n");
 &print_tempfile(CFILE, "[Service]\n");
 &print_tempfile(CFILE, "ExecStart=$start\n");
@@ -2318,7 +2367,7 @@ my $cfile = &get_systemd_root($name)."/".$name;
 
 # Opts
 if (ref($opts)) {
-	&print_tempfile(CFILE, "ExecStop=$kill -HUP \$MAINPID\n") if ($opts->{'stop'} eq '0');
+	&print_tempfile(CFILE, "ExecStop=$kill \$MAINPID\n") if ($opts->{'stop'} eq '0');
 	&print_tempfile(CFILE, "ExecReload=$kill -HUP \$MAINPID\n") if ($opts->{'reload'} eq '0');
 	&print_tempfile(CFILE, "ExecStop=$opts->{'stop'}\n") if ($opts->{'stop'});
 	&print_tempfile(CFILE, "ExecReload=$opts->{'reload'}\n") if ($opts->{'reload'});
@@ -2328,6 +2377,8 @@ if (ref($opts)) {
 	&print_tempfile(CFILE, "Group=$opts->{'group'}\n") if ($opts->{'group'});
 	&print_tempfile(CFILE, "KillMode=$opts->{'killmode'}\n") if ($opts->{'killmode'});
 	&print_tempfile(CFILE, "WorkingDirectory=$opts->{'workdir'}\n") if ($opts->{'workdir'});
+	&print_tempfile(CFILE, "Restart=$opts->{'restart'}\n") if ($opts->{'restart'});
+	&print_tempfile(CFILE, "RestartSec=$opts->{'restartsec'}\n") if ($opts->{'restartsec'});
 	&print_tempfile(CFILE, "TimeoutSec=$opts->{'timeout'}\n") if ($opts->{'timeout'});
 	&print_tempfile(CFILE, "StandardOutput=file:$opts->{'logstd'}\n") if ($opts->{'logstd'});
 	&print_tempfile(CFILE, "StandardError=file:$opts->{'logerr'}\n") if ($opts->{'logerr'});
@@ -2358,6 +2409,24 @@ my ($name) = @_;
 &restart_systemd();
 }
 
+=head2 get_systemd_unit_types([return-as-string-separated])
+
+Returns a list of all systemd unit types. Returns a string
+instead if separator param is set.
+
+=cut
+sub get_systemd_unit_types
+{
+my ($str_separator) = @_;
+my @systemd_types = ('target', 'service', 'socket', 'device',
+                     'mount', 'automount', 'swap', 'path',
+                     'timer', 'snapshot', 'slice', 'scope',
+                     'busname');
+return $str_separator ?
+	join($str_separator, @systemd_types) :
+	@systemd_types;
+}
+
 =head2 is_systemd_service(name)
 
 Returns 1 if some service is managed by systemd
@@ -2366,8 +2435,11 @@ Returns 1 if some service is managed by systemd
 sub is_systemd_service
 {
 my ($name) = @_;
-foreach my $s (&list_systemd_services()) {
-	if ($s->{'name'} eq $name && !$s->{'legacy'}) {
+my $units_piped = &get_systemd_unit_types('|');
+foreach my $s (&list_systemd_services(1)) {
+	if (($s->{'name'} eq $name ||
+	     $s->{'name'} =~
+	       /^$name\.($units_piped)$/) && !$s->{'legacy'}) {
 		return 1;
 		}
 	}
@@ -2382,18 +2454,61 @@ Returns the base directory for systemd unit config files
 sub get_systemd_root
 {
 my ($name) = @_;
+# Default systemd paths 
+my $systemd_local_conf = "/etc/systemd/system";
+my $systemd_unit_dir1 = "/usr/lib/systemd/system";
+my $systemd_unit_dir2 = "/lib/systemd/system";
 if ($name) {
-	foreach my $p ("/etc/systemd/system", "/usr/lib/systemd/system",
-		       "/lib/systemd/system") {
-		if (-r "$p/$name.service" || -r "$p/$name") {
+	foreach my $p (
+		$systemd_local_conf,
+		$systemd_unit_dir1,
+		$systemd_unit_dir2) {
+		if (-r "$p/$name.service"   ||
+		    -r "$p/$name"           ||
+		    -r "$p/$name.target"    ||
+		    -r "$p/$name.socket"    ||
+		    -r "$p/$name.device"    ||
+		    -r "$p/$name.mount"     ||
+		    -r "$p/$name.automount" ||
+		    -r "$p/$name.swap"      ||
+		    -r "$p/$name.path"      ||
+		    -r "$p/$name.timer"     ||
+		    -r "$p/$name.snapshot"  ||
+		    -r "$p/$name.slice"     ||
+		    -r "$p/$name.scope"     ||
+		    -r "$p/$name.busname") {
 			return $p;
 			}
 		}
 	}
-if (-d "/usr/lib/systemd/system") {
-	return "/usr/lib/systemd/system";
+# Debian prefers /lib/systemd/system
+if ($gconfig{'os_type'} eq 'debian-linux' &&
+    -d $systemd_unit_dir2) {
+	return $systemd_unit_dir2;
 	}
-return "/lib/systemd/system";
+# RHEL and other systems /usr/lib/systemd/system
+if (-d $systemd_unit_dir1) {
+	return $systemd_unit_dir1;
+	}
+# Fallback path for other systems
+return $systemd_unit_dir2;
+}
+
+
+=head2 get_systemd_unit_pid([name])
+
+Returns pid of running systemd unit
+Returns 0 if unit stopped or missing
+
+=cut
+sub get_systemd_unit_pid
+{
+my ($unit) = @_;
+my $pid =
+  &backquote_command("systemctl show --property MainPID @{[quotemeta($unit)]}");
+$pid =~ s/MainPID=(\d+)/$1/;
+$pid = int($pid);
+return $pid;
 }
 
 =head2 restart_systemd()
@@ -2403,10 +2518,14 @@ Tell the systemd daemon to re-read its config
 =cut
 sub restart_systemd
 {
-my @pids = &find_byname("systemd");
-if (@pids) {
-	&kill_logged('HUP', @pids);
-	&system_logged("systemctl --system daemon-reload >/dev/null 2>&1");
+if (&has_command("systemctl")) {
+	&system_logged("systemctl daemon-reload >/dev/null 2>&1");
+	}
+else {
+	my @pids = &find_byname("systemd");
+	if (@pids) {
+		&kill_logged('HUP', @pids);
+		}
 	}
 }
 

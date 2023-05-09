@@ -14,7 +14,9 @@ local($i, $list); $i = 0;
 $list = @_ ? join(' ', map { quotemeta($_) } @_) : "-a";
 %packages = ( );
 &open_execute_command(RPM, "rpm -q $list --queryformat \"%{NAME}\\n%{VERSION}-%{RELEASE}\\n%{EPOCH}\\n%{GROUP}\\n%{ARCH}\\n%{SUMMARY}\\n\\n\"", 1, 1);
-while($packages{$i,'name'} = <RPM>) {
+while(my $name = <RPM>) {
+	next if ($name =~ /is\s+not\s+installed$/);
+	$packages{$i,'name'} = $name;
 	chop($packages{$i,'name'});
 	chop($packages{$i,'version'} = <RPM>);
 	chop($packages{$i,'epoch'} = <RPM>);
@@ -109,7 +111,7 @@ if (-d $real) {
 	}
 elsif ($_[0] =~ /\*|\?/) {
 	local @rv;
-	&open_execute_command(RPM, "rpm -q -p $_[0] --queryformat \"%{NAME} %{SUMMARY}\\n\" 2>&1", 1);
+	&open_execute_command(RPM, "rpm -q -p $qm --queryformat \"%{NAME} %{SUMMARY}\\n\" 2>&1", 1);
 	while(<RPM>) {
 		chop;
 		push(@rv, $_) if (!/does not appear|query of.*failed|warning:/);

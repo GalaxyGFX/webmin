@@ -11,6 +11,8 @@ if ($in{'global'}) {
 	}
 elsif ($in{'new'}) {
 	&ui_print_header(undef, $text{'edit_title2'}, "", "create");
+	$log = $conf->[$in{'clone'}], $lconf = $log->{'members'}
+	    if ($in{'clone'});
 	}
 else {
 	&ui_print_header(undef, $text{'edit_title1'}, "", "edit");
@@ -143,7 +145,7 @@ print &ui_table_row($text{'edit_mailfl'},
 						$text{'edit_mailfirst'} :
 						$text{'edit_maillast'}) ] ]));
 
-if (&get_logrotate_version() < 3.6) {
+if (&compare_version_numbers(&get_logrotate_version(), 3.6) < 0) {
 	$errors = &find_value("errors", $lconf);
 	print &ui_table_row($text{'edit_errors'},
 			    &ui_opt_textbox("errors", $errors, 30,
@@ -162,7 +164,7 @@ $post = &find_value("postrotate", $lconf);
 print &ui_table_row($text{'edit_post'},
 		    &ui_textarea("post", $post, 3, 60));
 
-if (&get_logrotate_version() >= 3.4) {
+if (&compare_version_numbers(&get_logrotate_version(), 3.4) >= 0) {
 	&yesno_option("sharedscripts", "nosharedscripts", $lconf);
 	}
 
@@ -177,6 +179,13 @@ else {
 	print &ui_form_end([ [ 'save', $text{'save'} ],
 			     [ 'now', $text{'edit_now'} ],
 			     [ 'delete', $text{'delete'} ] ], "100%");
+
+	print &ui_form_start("edit_log.cgi",
+	    undef, undef, undef, 'ui_form ui_table_end_submit_right');
+	print &ui_hidden("clone", $in{'idx'});
+	print &ui_hidden("new", 1);
+	print &ui_submit($text{'edit_clone'});
+	print &ui_form_end();
 	}
 
 &ui_print_footer("", $text{'index_return'});

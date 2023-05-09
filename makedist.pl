@@ -21,7 +21,7 @@ $vers || usage();
 @files = ("config.cgi", "config-*-linux",
 	  "config-solaris", "images", "index.cgi", "mime.types",
 	  "miniserv.pl", "os_list.txt", "perlpath.pl", "setup.sh", "setup.pl", "setup.bat",
-	  "version", "web-lib.pl", "web-lib-funcs.pl",
+	  "setup-repos.sh", "version", "web-lib.pl", "web-lib-funcs.pl",
 	  "config_save.cgi", "chooser.cgi", "miniserv.pem",
 	  "config-aix", "update-from-repo.sh", "README.md",
 	  "newmods.pl", "copyconfig.pl", "config-hpux", "config-freebsd",
@@ -29,7 +29,7 @@ $vers || usage();
 	  "group_chooser.cgi", "config-irix", "config-osf1", "thirdparty.pl",
 	  "oschooser.pl", "config-unixware",
 	  "config-openserver", "switch_user.cgi", "lang", "lang_list.txt",
-	  "webmin-init", "webmin-daemon",
+	  "webmin-systemd", "webmin-init", "webmin-daemon",
 	  "config-openbsd",
 	  "config-macos", "LICENCE",
 	  "session_login.cgi", "acl_security.pl",
@@ -64,7 +64,7 @@ else {
 	close($fh);
 	@mlist = split(/\s+/, $mod_def_list);
 	}
-@dirlist = ( "WebminUI", "JSON" );
+@dirlist = ( "vendor_perl" );
 
 $dir = "webmin-$vers";
 if (!$release || !-d "$tardir/$dir") {
@@ -105,11 +105,6 @@ if (!$release || !-d "$tardir/$dir") {
 	system("rm -rf $tardir/$dir/status/mailserver*");
 	system("rm -rf $tardir/$dir/file/plugin.jar");
 	system("rm -rf $tardir/$dir/authentic-theme/update");
-
-	# Clear out minified JS
-	if (-d "$tardir/$dir/authentic-theme/extensions") {
-		system("cat /dev/null >$tardir/$dir/authentic-theme/extensions/csf.min.js");
-		}
 
 	# Remove theme settings files
 	if (-d "$tardir/$dir/authentic-theme") {
@@ -152,10 +147,18 @@ if (!$release || !-d "$tardir/$dir") {
 	if (!$min && -r "$tardir/$dir/gray-theme") {
 		system("cd $tardir/$dir && ln -s gray-theme blue-theme");
 		}
+
+	# ZIP up all help pages
+	print "Zipping up help pages\n";
+	foreach $help (map { "$tardir/$dir/$_/help" } @mlist) {
+		if (-d $help) {
+			system("cd $help && zip help.zip *.html >/dev/null && rm -f *.html");
+			}
+		}
 	}
 
 # Store release version, if set
-if ($release) {
+if ($release && $release != 1) {
 	system("echo $release > $tardir/$dir/release");
 	}
 else {
@@ -210,7 +213,7 @@ if (-d "sigs") {
 	}
 
 # Create a change log for this version
-if (-d "/home/jcameron/webmin.com" && !$release) {
+if (-d "/home/jcameron/webmin.com" && (!$release || $release == 1)) {
 	$lastvers = sprintf("%.2f0", $vers - 0.005);	# round down to last stable
 	if ($lastvers == $vers) {
 		# this is a new full version, so round down to the previous full version

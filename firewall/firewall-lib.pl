@@ -231,22 +231,19 @@ return $line;
 # return a list of active ipsets
 sub get_ipsets_active
 {
-local (@rv, $name, $set={});
+my (@rv, $name, $set);
 open(FILE, "ipset list -t 2>/dev/null |");
-LINE:
 while(<FILE>) {
-      # remove newlines, get arg and value
+	# remove newlines, get arg and value
         s/\r|\n//g;
-      local ($n, $v) = split(/: /, $_);
-      ($n) = $n =~ /(\S+)/;
-      # get values from name to number
-      $name=$v if ($n eq "Name");
-      $set->{$n}=$v;
-      if ($n eq "Number") {
-               push(@rv, $set);
-               $set={};
-              }
-      }
+	my ($n, $v) = split(/: /, $_);
+	$n =~ s/^(\S+).*/$1/;
+	if ($n eq "Name") {
+		$set = { };
+		push(@rv, $set);
+		}
+	$set->{$n} = $v;
+	}
 return @rv;
 }
 
@@ -255,35 +252,43 @@ return @rv;
 # Returns a human-readable description of some rule conditions
 sub describe_rule
 {
-local (@c, $d);
+my ($rule) = @_;
+my (@c, $d);
 foreach $d ('p', 's', 'd', 'i', 'o', 'f', 'dport',
 	    'sport', 'tcp-flags', 'tcp-option',
 	    'icmp-type', 'icmpv6-type', 'mac-source', 'limit', 'limit-burst',
 	    'ports', 'uid-owner', 'gid-owner',
 	    'pid-owner', 'sid-owner', 'ctstate', 'state', 'tos',
-	    'dports', 'sports', 'physdev-in', 'physdev-out', 'args') {
-	if ($_[0]->{$d}) {
+	    'dports', 'sports', 'physdev-in', 'physdev-out', 'match-set',
+	    'args') {
+	if ($rule->{$d}) {
 		# get name and values
-		local ($n, @v) = @{$_[0]->{$d}};
+		my ($n, @v) = @{$rule->{$d}};
 		# with additional args
 		if ($d eq 'args') {
 			# get args
-			@v = grep {/\S/} split(/ / , $_[0]->{$d});
+			@v = grep {/\S/} split(/ / , $rule->{$d});
 			# first arg is name, next are values
 			$n=shift(@v);
 			# translate src and dest parameter for ipset
-			push(@v, &text("desc_". pop(@v))) if ($n eq "--match-set");
+			push(@v, &text("desc_".pop(@v)))
+				if ($n eq "--match-set");
 			} 
 		# uppercase for p
 		@v = map { uc($_) } @v if ($d eq 'p');
 		# merge all in one for s and d
-		@v = map { join(", ", split(/,/, $_)) } @v if ($d eq 's' || $d eq 'd' );
-		# compose desc_$n$d to get localized message, provide values as $1, ..., $n
-		local $txt = &text("desc_$d$n", map { "<strong>$_</strong>" } @v);
+		@v = map { join(", ", split(/,/, $_)) } @v
+			if ($d eq 's' || $d eq 'd' );
+		# compose desc_$n$d to get myized message, provide values
+		# as $1, ..., $n
+		if ($d eq 'match-set') {
+			$v[1] = $text{'desc_'.$d.'_'.$v[1]} || $v[1];
+			}
+		my $txt = &text("desc_$d$n", map { "<b>$_</b>" } @v);
 		push(@c, $txt) if ($txt);
 		}
 	}
-local $rv;
+my $rv;
 if (@c) {
 	$rv = &text('desc_conds', join(" $text{'desc_and'} ", @c));
 	}
@@ -311,7 +316,7 @@ else {
 # Create (if necessary) the Webmin iptables init script
 sub create_webmin_init
 {
-local $res = &has_command("ip${ipvx}tables-restore");
+local $res = &iptables_restore_command();
 local $ipt = &has_command("ip${ipvx}tables");
 local $out = &backquote_command("$res -h 2>&1 </dev/null");
 if ($out =~ /\s+-w\s+/) {
@@ -387,12 +392,17 @@ foreach $c ("ip${ipvx}tables", "ip${ipvx}tables-restore", "ip${ipvx}tables-save"
 return undef;
 }
 
+sub iptables_restore_command
+{
+return &has_command("ip${ipvx}tables-legacy-restore") ||
+       &has_command("ip${ipvx}tables-restore");
+}
+
 # iptables_restore()
 # Activates the current firewall rules, and returns any error
 sub iptables_restore
 {
-local $rcmd = &has_command("ip${ipvx}tables-legacy-restore") ||
-	      "ip${ipvx}tables-restore";
+local $rcmd = &iptables_restore_command();
 local $out = &backquote_logged("cd / && $rcmd <$ipvx_save 2>&1");
 return $? ? "<pre>$out</pre>" : undef;
 }
@@ -444,7 +454,7 @@ if ($config{'after_cmd'}) {
 }
 
 # run_before_apply_command()
-# Runs the before-applying command, if any. If it failes, returns the error
+# Runs the before-applying command, if any. If it fails, returns the error
 # message output
 sub run_before_apply_command
 {
@@ -647,6 +657,33 @@ $flags =~ s/^-A /-I / if ($insert);
 my $cmd = "ip${ipvx}tables -t ".$table->{'name'}." ".$flags;
 my $out = &backquote_logged("$cmd 2>&1 </dev/null");
 return $? ? $out : undef;
+}
+
+# external_firewall_list(&tables)
+# Returns a list of all external firewalls detected
+sub external_firewall_list
+{
+my ($tables) = @_;
+my @fwname;
+my ($filter) = grep { $_->{'name'} eq 'filter' } @$tables;
+if ($filter->{'defaults'}->{'shorewall'}) {
+	push(@fwname, 'shorewall');
+	}
+if ($filter->{'defaults'}->{'INPUT_ZONES'}) {
+	push(@fwname, 'firewalld');
+	}
+if ($filter->{'defaults'} =~ /^f2b-|^fail2ban-/ && !$config{'filter_chain'} ) {
+	push(@fwname, 'fail2ban');
+	}
+if (&indexof('firewalld', @fwname) < 0 &&
+    &foreign_installed("firewalld", 1) == 2) {
+	push(@fwname, 'firewalld');
+	}
+if (&indexof('shorewall', @fwname) < 0 &&
+    &foreign_installed("shorewall", 1) == 2) {
+	push(@fwname, 'shorewall');
+	}
+return &unique(@fwname);
 }
 
 1;

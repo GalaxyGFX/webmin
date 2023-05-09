@@ -47,6 +47,10 @@ if ($tconfig{'inframe'}) {
 	}
 
 print "<center>\n";
+if (&miniserv_using_default_cert()) {
+    print "<h3>",&text('defcert_error',
+    	ucfirst(&get_product_name()), ($ENV{'MINISERV_KEYFILE'} || $miniserv{'keyfile'})),"</h3><p></p>\n";
+	}
 if (defined($in{'failed'})) {
 	if ($in{'twofactor_msg'}) {
 		print "<h3>",&text('session_twofailed',
@@ -93,7 +97,7 @@ print &ui_table_row($text{'session_pass'},
 if ($miniserv{'twofactor_provider'}) {
 	print &ui_table_row($text{'session_twofactor'},
 		&ui_textbox("twofactor", undef, 20, 0, undef,
-			    "autocomplete=off"));
+			    "autocomplete='one-time-code'"));
 	}
 
 # Remember session cookie?

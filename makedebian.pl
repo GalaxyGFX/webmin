@@ -31,7 +31,6 @@ $copyright_file = "$doc_dir/copyright";
 $usr_dir = "$tmp_dir/usr/share/$baseproduct";
 $bin_dir = "$tmp_dir/usr/bin";
 $pam_dir = "$tmp_dir/etc/pam.d";
-$init_dir = "$tmp_dir/etc/init.d";
 $pam_file = "$pam_dir/$baseproduct";
 $preinstall_file = "$debian_dir/preinst";
 $postinstall_file = "$debian_dir/postinst";
@@ -52,22 +51,25 @@ $ver = $ARGV[0];
 if ($ARGV[1]) {
 	$rel = "-".$ARGV[1];
 	}
--r "tarballs/$product-$ver.tar.gz" || die "tarballs/$product-$ver.tar.gz not found";
+$tarfile = "tarballs/$product-$ver$rel.tar.gz";
+if (!-r $tarfile) {
+	$tarfile = "tarballs/$product-$ver.tar.gz";
+	}
+-r $tarfile || die "$tarfile not found";
 
 # Create the base directories
-print "Creating Debian package of ",ucfirst($product)," ",$ver,$rel," ...\n";
+print "Creating Debian package of ",ucfirst($product)," ",$ver,$rel," ..\n";
 system("rm -rf $tmp_dir");
 mkdir($tmp_dir, 0755);
 chmod(0755, $tmp_dir);
 mkdir($debian_dir, 0755);
 system("mkdir -p $pam_dir");
-system("mkdir -p $init_dir");
 system("mkdir -p $usr_dir");
 system("mkdir -p $doc_dir");
 system("mkdir -p $bin_dir");
 
 # Un-tar the package to the correct locations
-system("gunzip -c tarballs/$product-$ver.tar.gz | (cd $tmp_dir ; tar xf -)") &&
+system("gunzip -c $tarfile | (cd $tmp_dir ; tar xf -)") &&
 	die "un-tar failed!";
 system("mv $tmp_dir/$product-$ver/* $usr_dir");
 rmdir("$tmp_dir/$product-$ver");
@@ -82,14 +84,18 @@ if ($product eq "webmin") {
 	system("cd $usr_dir && rm -rf acl/Authen-SolarisRBAC-0.1*");
 	}
 
-# Create init script
-system("mv $usr_dir/$baseproduct-init $init_dir/$baseproduct");
-chmod(0755, "$init_dir/$baseproduct");
+# Set install type
 system("echo deb >$usr_dir/install-type");
 system("echo $product >$usr_dir/deb-name");
 system("cd $usr_dir && chmod -R og-w .");
 if ($< == 0) {
 	system("cd $usr_dir && chown -R root:bin .");
+	}
+if ($ARGV[1] && $ARGV[1] > 1) {
+	system("echo $ARGV[1] >$usr_dir/release");
+	}
+else {
+	system("rm -f $usr_dir/release");
 	}
 
 # Create the link to webmin command
@@ -99,8 +105,10 @@ if ($product eq "webmin") {
 
 # Create the control file
 $size = int(`du -sk $tmp_dir`);
-@deps = ( "perl", "libnet-ssleay-perl", "openssl", "libauthen-pam-perl", "libpam-runtime", "libio-pty-perl", "unzip", "shared-mime-info", "tar" );
+@deps = ( "perl", "libnet-ssleay-perl", "openssl", "libauthen-pam-perl", "libpam-runtime", "libio-pty-perl", "unzip", "shared-mime-info", "tar", "libdigest-sha-perl", "libdigest-md5-perl" );
 $deps = join(", ", @deps);
+@recommends = ( "libdatetime-perl", "libdatetime-timezone-perl", "libdatetime-locale-perl", "libtime-piece-perl" );
+$recommends = join(", ", @recommends);
 open(CONTROL, ">$control_file");
 print CONTROL <<EOF;
 Package: $product
@@ -109,6 +117,7 @@ Section: admin
 Priority: optional
 Architecture: all
 Depends: $deps
+Recommends: $recommends
 Pre-Depends: perl
 Installed-Size: $size
 Maintainer: Jamie Cameron <jcameron\@webmin.com>
@@ -264,39 +273,31 @@ system("chmod 755 $preinstall_file");
 open(SCRIPT, ">$postinstall_file");
 print SCRIPT <<EOF;
 #!/bin/sh
-
-# Fix old versions of Webmin that might kill the UI process on upgrade
-if [ -d /etc/webmin ]; then
-	cat >/etc/webmin/stop 2>/dev/null <<'EOD'
-#!/bin/sh
-echo Stopping Webmin server in /usr/libexec/webmin
-pidfile=`grep "^pidfile=" /etc/webmin/miniserv.conf | sed -e 's/pidfile=//g'`
-pid=`cat \$pidfile`
-if [ "\$pid" != "" ]; then
-  kill \$pid || exit 1
-  if [ "\$1" = "--kill" ]; then
-    sleep 1
-    (kill -9 -- -\$pid || kill -9 \$pid) 2>/dev/null
-  fi
-  exit 0
-else
-  exit 1
+killmodenone=0
+justinstalled=1
+if [ -d "/etc/$baseproduct" ]; then
+	justinstalled=0
 fi
-EOD
-fi
-
 inetd=`grep "^inetd=" /etc/$baseproduct/miniserv.conf 2>/dev/null | sed -e 's/inetd=//g'`
-if [ "\$1" = "upgrade" -a "\$1" != "abort-upgrade" ]; then
-	# Upgrading the package, so stop the old webmin properly
+productpidfile=`grep "^pidfile=" /etc/$baseproduct/miniserv.conf 2>/dev/null | sed -e 's/pidfile=//g'`
+if [ -r "\$productpidfile" ]; then
+	productrunning=1
+fi
+if [ "\$1" = "configure" ]; then
+	# Upgrading the package, so stop the old Webmin properly
 	if [ "\$inetd" != "1" ]; then
-		/etc/$baseproduct/stop >/dev/null 2>&1 </dev/null
+		if [ -f "/etc/$baseproduct/.pre-install" ]; then
+			/etc/$baseproduct/.pre-install >/dev/null 2>&1 </dev/null
+		else
+			killmodenone=1
+		fi
 	fi
 fi
 cd /usr/share/$baseproduct
 config_dir=/etc/$baseproduct
 var_dir=/var/$baseproduct
 perl=/usr/bin/perl
-autoos=3
+autoos=1
 if [ "\$WEBMIN_PORT\" != \"\" ]; then
 	port=\$WEBMIN_PORT
 else
@@ -317,12 +318,13 @@ autothird=1
 noperlpath=1
 nouninstall=1
 nostart=1
-export config_dir var_dir perl autoos port login crypt host ssl nochown autothird noperlpath nouninstall nostart allow atboot makeboot
+nostop=1
+export config_dir var_dir perl autoos port login crypt host ssl nochown autothird noperlpath nouninstall nostart allow atboot makeboot nostop
 tempdir=/tmp/.webmin
 if [ ! -d \$tempdir ]; then
 	tempdir=/tmp
 fi
-./setup.sh >$tempdir/$product-setup.out 2>&1
+./setup.sh >\$tempdir/$product-setup.out 2>&1
 if [ "$product" = "webmin" ]; then
 	grep sudo= /etc/$product/miniserv.conf >/dev/null 2>&1
 	if [ "\$?" = 1 ]; then
@@ -331,18 +333,39 @@ if [ "$product" = "webmin" ]; then
 	fi
 fi
 rm -f /var/lock/subsys/$baseproduct
-if [ "$inetd" != "1" ]; then
-	if [ -x "`which invoke-rc.d 2>/dev/null`" ]; then
-		invoke-rc.d $baseproduct stop >/dev/null 2>&1 </dev/null
-		invoke-rc.d $baseproduct start >/dev/null 2>&1 </dev/null
-	else
-		/etc/$baseproduct/stop >/dev/null 2>&1 </dev/null
+
+if [ "\$inetd" != "1" ]; then
+	productucf=Webmin
+	if [ "$product" = "usermin" ]; then
+		productucf=Usermin
+	fi
+	if [ "\$justinstalled" = "1" ]; then
 		/etc/$baseproduct/start >/dev/null 2>&1 </dev/null
+		if [ "\$?" != "0" ]; then
+			echo "E: \${productucf} server cannot be started. It is advised to start it manually by\n   running \\"/etc/$baseproduct/restart-by-force-kill\\" command"
+		fi
+	else
+		if [ "$product" = "webmin" ]; then
+			if [ "\$killmodenone" != "1" ]; then
+				/etc/$baseproduct/.post-install >/dev/null 2>&1 </dev/null
+			else
+				/etc/$baseproduct/.reload-init >/dev/null 2>&1 </dev/null
+				if [ -f /etc/$baseproduct/.reload-init-systemd ]; then
+					/etc/$baseproduct/.reload-init-systemd >/dev/null 2>&1 </dev/null
+					rm -f /etc/$baseproduct/.reload-init-systemd
+				fi
+			fi
+		else
+			if [ "\$productrunning" = "1" ]; then
+				/etc/$baseproduct/restart >/dev/null 2>&1 </dev/null
+			fi
+		fi
+		if [ "\$?" != "0" ]; then
+			echo "W: \${productucf} server cannot be restarted. It is advised to restart it manually by\n   running \\"/etc/$baseproduct/restart-by-force-kill\\" command when upgrade process is finished"
+		fi
 	fi
 fi
-if [ "$product" = "usermin" ]; then
-	(insserv $baseproduct || update-rc.d $baseproduct defaults) >/dev/null 2>&1
-fi
+
 cat >/etc/$baseproduct/uninstall.sh <<EOFF
 #!/bin/sh
 printf "Are you sure you want to uninstall $ucproduct? (y/n) : "
@@ -350,8 +373,15 @@ read answer
 printf "\\n"
 if [ "\\\$answer" = "y" ]; then
 	echo "Removing $ucproduct package .."
-	dpkg --remove $product
-	echo "Done!"
+	rm -f /usr/share/$baseproduct/authentic-theme/manifest-*
+	dpkg --remove --force-depends $product
+	systemctlcmd=\\\`which systemctl 2>/dev/null\\\`
+	if [ -x "\\\$systemctlcmd" ]; then
+		\\\$systemctlcmd stop $product >/dev/null 2>&1 </dev/null
+		rm -f /lib/systemd/system/$product.service
+		\\\$systemctlcmd daemon-reload
+	fi
+	echo ".. done"
 fi
 EOFF
 chmod +x /etc/$baseproduct/uninstall.sh
@@ -365,15 +395,15 @@ if [ "\$?" = "0" ]; then
 	fi
 fi
 if [ "\$sslmode" = "1" ]; then
-	echo "$ucproduct install complete. You can now login to https://\$host:\$port/"
+	echo "$ucproduct install complete. You can now login to https://\$host:\$port/" >>\$tempdir/$product-setup.out 2>&1
 else
-	echo "$ucproduct install complete. You can now login to http://\$host:\$port/"
+	echo "$ucproduct install complete. You can now login to http://\$host:\$port/" >>\$tempdir/$product-setup.out 2>&1
 fi
 if [ "$product" = "webmin" ]; then
-	echo "as root with your root password, or as any user who can use sudo"
-	echo "to run commands as root."
+	echo "as root with your root password, or as any user who can use sudo" >>\$tempdir/$product-setup.out 2>&1
+	echo "to run commands as root." >>\$tempdir/$product-setup.out 2>&1
 else
-	echo "as any user on the system."
+	echo "as any user on the system." >>\$tempdir/$product-setup.out 2>&1
 fi
 EOF
 close(SCRIPT);
@@ -388,11 +418,18 @@ if [ "\$1" != "upgrade" -a "\$1" != "abort-upgrade" ]; then
 	if [ "\$?" = 0 ]; then
 		# Package is being removed, and no new version of webmin
 		# has taken it's place. Run uninstalls and stop the server
-		if [ "$product" = "webmin" ]; then
-			echo "Running uninstall scripts .."
-			(cd /usr/share/$baseproduct ; WEBMIN_CONFIG=/etc/$baseproduct WEBMIN_VAR=/var/$baseproduct LANG= /usr/share/$baseproduct/run-uninstalls.pl)
-		fi
 		/etc/$baseproduct/stop >/dev/null 2>&1 </dev/null
+		if [ "$product" = "webmin" ]; then
+			(cd /usr/share/$baseproduct ; WEBMIN_CONFIG=/etc/$baseproduct WEBMIN_VAR=/var/$baseproduct LANG= /usr/share/$baseproduct/run-uninstalls.pl) >/dev/null 2>&1 </dev/null
+		else
+			rm -f /usr/share/$baseproduct/authentic-theme/manifest-*
+			systemctlcmd=\`which systemctl 2>/dev/null\`
+			if [ -x "\$systemctlcmd" ]; then
+				\$systemctlcmd stop $product >/dev/null 2>&1 </dev/null
+				rm -f /lib/systemd/system/$product.service
+				\$systemctlcmd daemon-reload
+			fi
+		fi
 		/bin/true
 	fi
 fi
@@ -407,9 +444,10 @@ print SCRIPT <<EOF;
 if [ "\$1" != "upgrade" -a "\$1" != "abort-upgrade" ]; then
 	grep root=/usr/share/$baseproduct /etc/$baseproduct/miniserv.conf >/dev/null 2>&1
 	if [ "\$?" = 0 ]; then
-		# Package is being removed, and no new version of webmin
-		# has taken it's place. Delete the config files
+		# Package is being removed, and no new version of Webmin
+		# has taken its place. Delete the config files
 		rm -rf /etc/$baseproduct /var/$baseproduct
+		rm -f /etc/pam.d/$baseproduct
 	fi
 fi
 EOF
@@ -421,9 +459,9 @@ system("fakeroot dpkg --build $tmp_dir deb/${product}_${ver}${rel}_all.deb") &&
 	die "dpkg failed";
 #system("rm -rf $tmp_dir");
 print "Wrote deb/${product}_${ver}${rel}_all.deb\n";
-$md5 = `md5sum tarballs/$product-$ver$rel.tar.gz`;
+$md5 = `md5sum $tarfile`;
 $md5 =~ s/\s+.*\n//g;
-@st = stat("tarballs/$product-$ver.tar.gz");
+@st = stat($tarfile);
 
 # Create the .diff file, which just contains the debian directory
 $diff_orig_dir = "$tmp_dir/$product-$ver-orig";

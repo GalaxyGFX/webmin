@@ -58,9 +58,9 @@ foreach $o (@lang_order_list) {
 	}
 
 # Call any config pre-load function
-if (&foreign_func_exists($module, 'config_pre_load')) {
-	&foreign_call($module, "config_pre_load", \%info, \@info_order)
-	&foreign_call($module, "config_pre_load", \%einfo)
+if (&foreign_defined($module, 'config_pre_load')) {
+	&foreign_call($module, "config_pre_load", \%info, \@info_order);
+	&foreign_call($module, "config_pre_load", \%einfo);
 	}
 
 @info_order = &unique(@info_order);
@@ -274,6 +274,15 @@ foreach $o (@lang_order_list) {
 if ($section) {
 	# Limit to settings in one section
 	@info_order = &config_in_section($section, \@info_order, \%info);
+	}
+
+# If config fields are conditional (not displayed)
+# make sure to preserve system default values to
+# prevent changing behaviour of a module
+if (&foreign_exists($module) &&
+    &foreign_require($module) &&
+    &foreign_defined($module, 'config_pre_load')) {
+	&foreign_call($module, "config_pre_load", \%info, \@info_order);
 	}
 
 # Actually parse the inputs

@@ -2,6 +2,8 @@
 # Called from cron to re-sign all zones that are too old
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our %config;
 
 my $no_acl_check++;
@@ -23,7 +25,7 @@ my $errcount = 0;
 my $donecount = 0;
 foreach my $z (@zones) {
 	# Get the key
-	next if ($z->{'type'} ne 'master');
+	next if ($z->{'type'} ne 'master' && $z->{'type'} ne 'primary');
 	my $zonefile = &get_zone_file($z);
 	my $krfile = "$zonefile".".krf";	
 	my $dom = $z->{'members'} ? $z->{'values'}->[0] : $z->{'name'};

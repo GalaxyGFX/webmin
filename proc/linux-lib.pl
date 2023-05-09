@@ -35,6 +35,7 @@ if ($ver && $ver < 2) {
 		$plist[$i]->{"ppid"} = $4;
 		$plist[$i]->{"user"} = getpwuid($2);
 		$plist[$i]->{"size"} = "$7 kB";
+		$plist[$i]->{"bytes"} = $7*1024;
 		$plist[$i]->{"cpu"} = "Unknown";
 		$plist[$i]->{"time"} = $12;
 		$plist[$i]->{"nice"} = $6;
@@ -65,7 +66,7 @@ else {
 		# Use width format character if allowed
 		$width = ":80";
 		}
-	open(PS, "ps --cols 2048 -eo user$width,ruser$width,group$width,rgroup$width,pid,ppid,pgid,pcpu,vsz,nice,etime,time,stime,tty,args 2>/dev/null |");
+	open(PS, "ps --cols 2048 -eo user$width,ruser$width,group$width,rgroup$width,pid,ppid,pgid,pcpu,rss,nice,etime,time,stime,tty,args 2>/dev/null |");
 	$dummy = <PS>;
 	my @now = localtime(time());
 	for($i=0; $line=<PS>; $i++) {
@@ -495,11 +496,13 @@ sub get_current_cpu_data
 {
 my @cpu;
 my @fans;
+my @cputhermisters;
 if (&has_command("sensors")) {
     my ($cpu, $cpu_aux, $cpu_package, $cpu_broadcom, $cpu_amd);
     my $fh = "SENSORS";
 
     # Examples https://gist.github.com/547451c9ca376b2d18f9bb8d3748276c
+    # &open_execute_command($fh, "cat /tmp/.webmin/sensors </dev/null 2>/dev/null", 1);
     &open_execute_command($fh, "sensors </dev/null 2>/dev/null", 1);
 
     while (<$fh>) {
@@ -508,6 +511,22 @@ if (&has_command("sensors")) {
         my ($cpu_volt) = $_ =~ /(?|in[\d+]\s*:\s+([\+\-0-9\.]+)\s+V|cpu\s+core\s+voltage\s*:\s+([0-9\.]+)\s+V)/i;
         my ($cpu_fan_num, $cpu_fan_rpm) = $_ =~ /(?|fan([\d+])\s*:\s+([0-9]+)\s+rpm|cpu(\s)fan\s*:\s+([0-9]+)\s+rpm|cpu\s+fan\s*:\s+([0-9]+)\s+rpm)/i;
         $cpu++ if ($cpu_volt || $cpu_fan_num);
+
+        # First just store fan data for any device if any
+        push(@fans,
+                {  'fan' => &trim($cpu_fan_num),
+                   'rpm' => $cpu_fan_rpm
+                }
+        ) if ($cpu_fan_num);
+
+        # AMD CPU Thermisters #1714
+        if ($cpu && /thermistor\s+[\d]+:\s+[+-]([\d]+)/i) {
+            my $temp = int($1);
+            push(@cputhermisters,
+                 {  'core' => scalar(@cputhermisters) + 1,
+                    'temp' => $temp
+                 }) if ($temp);
+            }
 
         # CPU package
         ($cpu_package) = $_ =~ /(?|(package\s+id\s+[\d]+)|(coretemp-[a-z]+-[\d]+))/i
@@ -541,19 +560,12 @@ if (&has_command("sensors")) {
         # Non-standard outputs
         else {
 
-        	# Auxiliary CPU temperature and fans were already captured
+            # Auxiliary CPU temperature and fans were already captured
             next if ($cpu_aux);
 
             # CPU types
             ($cpu_broadcom) = $_ =~ /cpu_thermal-virtual-[\d]+/i if (!$cpu_broadcom);
             ($cpu_amd)      = $_ =~ /\w[\d]{2}temp-pci/i         if (!$cpu_amd);
-
-            # First just store fan data for any device if any
-            push(@fans,
-                 {  'fan' => &trim($cpu_fan_num),
-                    'rpm' => $cpu_fan_rpm
-                 }
-            ) if ($cpu_fan_num);
 
             # Full CPU output #1253
             if ($cpu) {
@@ -627,6 +639,14 @@ if (&has_command("sensors")) {
         }
     close($fh);
     }
+@cpu = @cputhermisters
+    if (!@cpu && @cputhermisters);
+
+# Fix to remove cannot detect 
+# package temperatures (178)
+if (@cpu) {
+	@cpu = grep {$_->{'temp'} != 178} @cpu;
+	}
 return (\@cpu, \@fans);
 }
 
@@ -635,9 +655,13 @@ return (\@cpu, \@fans);
 # blocks in and out
 sub get_cpu_io_usage
 {
-my $out,@lines,@w;
+my ($nodelay) = @_;
+my $interval;
+$interval = " 1 2"
+	if (!$nodelay);
+my ($out, @lines, @w);
 if (&has_command("vmstat")) {
-        $out = &backquote_command("vmstat 1 2 2>/dev/null");
+        $out = &backquote_command("vmstat$interval 2>/dev/null");
         @lines = split(/\r?\n/, $out);
         @w = split(/\s+/, $lines[$#lines]);
         shift(@w) if ($w[0] eq '');

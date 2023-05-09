@@ -361,6 +361,9 @@ else {
 		elsif (/Stripes\s+(\d+)/) {
 			$lv->{'stripes'} = $1;
 			}
+		elsif (/Mirrored\s+volumes\s+(\d+)/) {
+			$lv->{'mirrors'} = $1;
+			}
 		elsif (/Stripe\s+size\s+(\S+)\s+(\S+)/) {
 			$lv->{'stripesize'} = &mult_units($1, $2);
 			}
@@ -388,9 +391,10 @@ sub get_logical_volume_usage
 {
 local ($lv) = @_;
 local @rv;
+local @raids;
 if (&get_lvm_version() >= 2) {
 	# LVdisplay has new format in version 2
-	open(DISPLAY, "lvdisplay -m ".quotemeta($lv->{'device'})." 2>/dev/null |");
+	open(DISPLAY, "lvdisplay -a -m ".quotemeta($lv->{'device'})." 2>/dev/null |");
 	while(<DISPLAY>) {
 		if (/\s+Physical\s+volume\s+\/dev\/(\S+)/) {
 			push(@rv, [ $1, undef ]);
@@ -398,8 +402,21 @@ if (&get_lvm_version() >= 2) {
 		elsif (/\s+Physical\s+extents\s+(\d+)\s+to\s+(\d+)/ && @rv) {
 			$rv[$#rv]->[1] = $2-$1+1;
 			}
+		elsif (/\s+Logical\s+volume\s+([a-z0-9\_]+)/i) {
+			push(@raids, [ $1, undef ]);
+			}
+		elsif (/\s+Logical\s+extents\s+(\d+)\s+to\s+(\d+)/ && @raids) {
+			$raids[$#raid]->[1] = $2-$1+1;
+			}
 		}
 	close(DISPLAY);
+
+	# Lookup actual PVs for raid logical volumes
+	foreach my $r (@raids) {
+		my $rlv = { 'device' => '/dev/'.$lv->{'vg'}.'/'.$r->[0] };
+		my @pvs = &get_logical_volume_usage($rlv);
+		push(@rv, @pvs);
+		}
 	}
 else {
 	# Old version 1 format
@@ -958,6 +975,45 @@ local ($datalv, $metadatalv) = @_;
 local $cmd = "lvconvert -y --type thin-pool --poolmetadata ".
 	     quotemeta($metadatalv->{'device'})." ".
 	     quotemeta($datalv->{'device'});
+local $out = &backquote_logged("$cmd 2>&1 </dev/null");
+return $? ? $out : undef;
+}
+
+# create_raid_volume(&lv)
+# Create a logical volume that uses RAID across multiple PVs
+sub create_raid_volume
+{
+local ($lv) = @_;
+local $cmd = "lvcreate -y -n".quotemeta($lv->{'name'})." ";
+$cmd .= " --type ".
+        quotemeta($lv->{'raid'} eq 'raid0' ? 'striped' : $lv->{'raid'});
+if ($lv->{'raid'} eq 'raid1') {
+	$cmd .= " --mirrors ".$lv->{'mirrors'};
+	}
+else {
+	$cmd .= " --stripes ".$lv->{'stripes'};
+	}
+local $suffix;
+if ($lv->{'size_of'} eq 'VG' || $lv->{'size_of'} eq 'FREE' ||
+    $lv->{'size_of'} eq 'ORIGIN') {
+	$cmd .= " -l ".quotemeta("$lv->{'size'}%$lv->{'size_of'}");
+	}
+elsif ($lv->{'size_of'}) {
+	$cmd .= " -l $lv->{'size'}%PVS";
+	$suffix = " ".quotemeta("/dev/".$lv->{'size_of'});
+	}
+else {
+	$cmd .= " -L".$lv->{'size'}."k";
+	}
+$cmd .= " -p ".quotemeta($lv->{'perm'});
+$cmd .= " -r ".quotemeta($lv->{'readahead'})
+	if ($lv->{'readahead'} && $lv->{'readahead'} ne "auto");
+$cmd .= " -i ".quotemeta($lv->{'stripe'})
+	if ($lv->{'stripe'});
+$cmd .= " -I ".quotemeta($lv->{'stripesize'})
+	if ($lv->{'stripesize'} && $lv->{'stripe'});
+$cmd .= " ".quotemeta($lv->{'vg'});
+$cmd .= $suffix;
 local $out = &backquote_logged("$cmd 2>&1 </dev/null");
 return $? ? $out : undef;
 }

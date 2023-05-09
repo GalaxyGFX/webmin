@@ -1,12 +1,11 @@
 # Functions for editing the minecraft config
-#
-# XXX remove old download buttons
-# XXX add button to add latest version
-# XXX remove check for latest version
+# XXX plugin manager
 
 BEGIN { push(@INC, ".."); };
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 use WebminCore;
 use Time::Local;
 use POSIX;
@@ -988,6 +987,7 @@ my $pos = $st[7];
 open(LOGFILE, $logfile);
 my @tm = localtime(time());
 my $wantday = sprintf("%4.4d-%2.2d-%2.2d", $tm[5]+1900, $tm[4]+1, $tm[3]);
+my $lasttime;
 while(1) {
 	$pos -= 4096;
 	$pos = 0 if ($pos < 0);
@@ -995,10 +995,20 @@ while(1) {
 	last if ($pos == 0);
 	my $dummy = <LOGFILE>;	# Skip partial line
 	my $line = <LOGFILE>;
-	$line =~ /^((\d+)\-(\d+)\-(\d+))/ || next;
-	if ($1 ne $wantday) {
-		# Found a line for another day
-		last;
+	if ($line =~ /^((\d+)\-(\d+)\-(\d+))/) {
+		# Format with the date in it
+		if ($1 ne $wantday) {
+			# Found a line for another day
+			last;
+			}
+		}
+	elsif ($line =~ /^\[((\d+):(\d+):(\d+))\]/) {
+		# Format with the time only
+		if ($lasttime && ($1 cmp $lasttime) > 0) {
+			# Time has gone forwards, meaning its a new day
+			last;
+			}
+		$lasttime = $1;
 		}
 	}
 
@@ -1052,6 +1062,33 @@ foreach my $u (keys %limit_lastlogin) {
 	}
 
 return (\%rv, \%limit_rv);
+}
+
+# get_past_days_usage(user)
+# Returns a list of array refs, each with day, playtime and enforced playtime
+sub get_past_day_usage
+{
+my ($u) = @_;
+my $ufile = "$playtime_dir/$u";
+my %days;
+&read_file($ufile, \%days);
+my @rv;
+foreach my $k (sort { $a cmp $b } (keys %days)) {
+	next if ($k !~ /^total_(\d+\-\d+\-\d+)$/);
+	my $day = $1;
+	push(@rv, [ $day, $days{"total_".$day}, $days{"limit_".$day} ]);
+	}
+return @rv;
+}
+
+# list_playtime_users()
+# Returns a list of all users for which we have playtime stats
+sub list_playtime_users
+{
+opendir(DIR, $playtime_dir) || return ();
+my @users = grep { !/^\./ } readdir(DIR);
+closedir(DIR);
+return @users;
 }
 
 # nice_seconds(secs)

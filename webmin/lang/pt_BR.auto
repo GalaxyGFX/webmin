@@ -1,7 +1,4 @@
 access_local=Incluir rede local na lista
-access_elibwrap=O controle de acesso IP usando TCP-wrappers não está disponível, pois o módulo Perl $1 não está instalado.
-access_libwrapcpan=<a href='$1'>Clique aqui</a> para que o Webmin instale automaticamente o módulo Perl ausente.
-
 access_eip6='$1' não é um endereço IPv6 ou de rede completo
 access_ecidr6='$1' não é um tamanho de rede IPv6 válido
 access_ecidr8=O tamanho da rede IPv6 '$1' deve ser divisível por 8
@@ -19,6 +16,10 @@ bind_maxconns_per_net=Máximo de conexões simultâneas por rede
 bind_emaxconns=O máximo de conexões simultâneas deve ser um número maior que 1
 bind_emaxconns_per_ip=O máximo de conexões simultâneas por IP deve ser um número maior que 1
 bind_emaxconns_per_net=O máximo de conexões simultâneas por rede deve ser um número maior que 1
+bind_maxlifetime=Vida útil máxima do processo Webmin
+bind_maxlifetime_def=Ilimitado
+bind_maxlifetime_secs=segundos
+bind_emaxlifetime=A vida útil máxima do processo deve ser um número maior que 60 segundos
 
 log_global=&lt;Ações globais&gt;
 log_sched=Registrar funções agendadas?
@@ -33,11 +34,20 @@ ui_ehostnamedisplay=Nome de host de exibição ausente ou inválido
 mods_checksig=Verifique o arquivo de assinatura para obter os módulos baixados?
 
 os_incorrect=O sistema operacional $1 foi atualizado para a versão $2 
+os_release_notes=Notas de lançamento
 os_usermin=Atualize também o SO Usermin
+
+lang_title=Idioma e localidade
+lang_title2=Idioma e localidade do Webmin
+lang_lang=Linguagem
+lang_locale=Localidade
+lang_dateformat=Formato de exibição de datas
+lang_dateformat_dd/mon/yyyy=dd/seg/aaaa (ou seja, 16/set/2001)
 
 ssl_deny=Versões do protocolo SSL a serem rejeitadas
 ssl_compression=Permitir conexões SSL compactadas?
 ssl_honorcipherorder=Forçar o uso da ordem de cifra definida pelo servidor?
+ssl_hsts=Aplicar SSL com cabeçalho HSTS
 ssl_extracasdef=O mesmo que configurações SSL globais
 ssl_extracasnone=Nenhum para este endereço IP
 ssl_extracasbelow=Inserido abaixo ..
@@ -63,6 +73,7 @@ ssl_already2=Solicitação de assinatura de certificado gerada anteriormente :
 ssl_letsdesc=Let's Encrypt é uma autoridade de certificação gratuita, automatizada e aberta que pode ser usada para gerar um certificado SSL para uso pelo Webmin.
 ssl_letserr=Infelizmente, o Let's Encrypt não pode ser usado no seu sistema: $1.
 ssl_letserr2=Como alternativa, verifique a página de configuração do módulo <a href='$1'></a> para garantir que você esteja usando o caminho correto para o comando <tt>letsencrypt</tt>.
+
 ssl_letsdesc2=Esta página pode ser usada para solicitar um novo certificado, que substituirá qualquer outro atualmente configurado no Webmin. No entanto, o serviço Let's Encrypt exige que sua propriedade do domínio de certificado seja validada, verificando se este sistema hospeda o site do domínio. Isso é feito colocando um pequeno arquivo temporário no diretório de documentos do site.
 ssl_letsheader=Opções para novo certificado SSL
 ssl_letsdoms=Nomes de host para certificado
@@ -91,6 +102,10 @@ newcsr_ok2=Esse CSR deve ser enviado a uma autoridade de assinatura, que retorna
 startpage_webminup=Mostrar atualizações do Webmin na página Informações do sistema?
 startpage_moduleup=Mostrar atualizações de módulo na página Informações do sistema?
 
+upgrade_setup=Executando o script <tt>setup.sh</tt> para atualizar o Webmin ..
+upgrade_setuprpm=Executando <tt>RPM</tt> para atualizar o Webmin ..
+upgrade_setupdeb=Executando <tt>DPKG</tt> para atualizar o Webmin ..
+upgrade_setuppackage=Executando <tt>pkgadd</tt> para atualizar o Webmin ..
 upgrade_eportage=Atualmente, o recurso de atualização do Webmin não funciona quando você instala a partir de um pacote do Portage. Atualize usando as ferramentas do Portage.
 upgrade_src=Atualize o Webmin de
 upgrade_opts=Opções de atualização
@@ -114,8 +129,13 @@ session_pamend=Passar o status do PAM para outros módulos?
 session_cmddef=Alteração de senha expirada
 session_banner=Banner de pré-login
 session_md5=Formato de hash de senha do Webmin
-session_sha512=Use criptografia SHA512
-session_esha512mod=A criptografia SHA512 não pode ser usada, pois o módulo Perl $1 não está instalado.
+session_md5off=Determinar automaticamente
+session_md5on=Use o formato de hash <tt>MD5</tt>
+session_sha512=Use o formato de hash <tt>SHA512</tt>
+session_yescrypt=Use o formato de hash <tt>yescrypt</tt>
+session_emd5mod=O formato de hash MD5 não pode ser usado, pois o módulo Perl $1 não está instalado
+session_esha512mod=O formato de hash SHA512 não pode ser usado, pois o módulo Perl $1 não está instalado
+session_eyescrypt=o formato hash yescrypt não pode ser usado, pois o módulo Perl $1 não está instalado
 session_passapi=Ativar API de alteração de senha remota?
 session_passapi0=API desativada
 session_passapi1=API habilitada para usuários Unix
@@ -152,6 +172,7 @@ advanced_precache0=Nenhum
 advanced_precache1=Arquivos de texto em inglês
 advanced_precache2=Arquivos que correspondem aos padrões de shell $1
 advanced_eprecache=Lista ausente de padrões de shell para pré-cache
+advanced_etempallowed=A pasta de ficheiros temporários $1 éuma pasta do sistema
 advanced_gzip=Gzip comprimir arquivos estáticos?
 advanced_gzipauto=Somente se o arquivo.gz pré-compactado existir
 advanced_gzip0=Nunca
@@ -239,6 +260,16 @@ web_expirespaths=Tempos de cache do lado do cliente com base no caminho da URL
 web_expirespath=Expressão regular do caminho
 web_expirestime=Tempo de cache em segundos
 web_eexpires2=Tempo de cache do lado do cliente ausente ou não numérico na linha $1
+web_rediruurl=URL de redirecionamento do switch pós-login
+web_redirdesc=Substituições de URL de redirecionamento interno
+web_eredirurl='$1' contém espaços e não é um URL válido
+web_redirhost=Redireccionar anfitrião
+web_eredirhost='$1' não é um nome de host válido
+web_redirport=Porta de redirecionamento
+web_redirpref=Prefixo de redirecionamento
+web_eredirpref=O prefixo deve começar com uma barra
+web_eredirpref2=O prefixo não deve conter espaços
+web_redirssl=Redirecionar SSL
 
 webmincron_title=Funções agendadas do Webmin
 webmincron_emodule=O módulo Trabalhos Webmin Cron não está instalado!

@@ -2,6 +2,8 @@
 # Add a record to multiple domains
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in);
 
 require './bind8-lib.pl';
@@ -60,7 +62,7 @@ $in{'ttl_def'} || $in{'ttl'} =~ /^\d+$/ ||
 
 foreach my $zi (@zones) {
 	print &text('rmass_doing', "<tt>$zi->{'name'}</tt>"),"<br>\n";
-	if ($zi->{'type'} ne 'master') {
+	if ($zi->{'type'} ne 'master' && $zi->{'type'} ne 'primary') {
 		# Skip - not a master zone
 		print $text{'umass_notmaster'},"<p>\n";
 		next;

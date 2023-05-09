@@ -3,6 +3,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './servers-lib.pl';
 our (%text, %config, %access, %in);
 &ui_print_header(undef, $text{'index_title'}, "", undef, 1, 1);
@@ -53,7 +55,7 @@ if (@servers && $config{'display_mode'}) {
 		my $table = "<table cellpadding=0 cellspacing=0 width=100%><tr>\n";
 		if (!$access{'links'} || !$s->{'port'}) {
 			$table .= "<td>\n";
-			$table .= ($s->{'realhost'} || $s->{'host'});
+			$table .= &html_escape($s->{'realhost'} ||$s->{'host'});
 			$table .= ":$s->{'port'}" if ($s->{'port'});
 			$table .= "</td>\n";
 			}
@@ -66,8 +68,9 @@ if (@servers && $config{'display_mode'}) {
 				$link = &make_url($s);
 				}
 		    	$table .= "<td>\n";
-			$table .= &ui_link($link, ($s->{'realhost'} || $s->{'host'} ).
-					   ":".$s->{'port'}, undef, "target=_top");
+			$table .= &ui_link($link,
+				&html_escape($s->{'realhost'} || $s->{'host'} ).
+				":".$s->{'port'}, undef, "target=_top");
 			$table .= "</td>\n";
 			}
 		$table .= "<td align=right>";
@@ -81,8 +84,8 @@ if (@servers && $config{'display_mode'}) {
 			}
 		$table .= "</td></tr></table>\n";
 		push(@cols, $table);
-		push(@cols, $s->{'desc'});
-		push(@cols, $s->{'group'} || $text{'index_none'});
+		push(@cols, &html_escape($s->{'desc'}));
+		push(@cols, &html_escape($s->{'group'}) || $text{'index_none'});
 		my ($type) = grep { $_->[0] eq $s->{'type'} }
 				  &get_server_types();
 		push(@cols, $type->[1]);
@@ -102,11 +105,22 @@ elsif (@servers) {
 	my (@afters, @befores);
 	if ($access{'edit'}) {
 		my $sep = length($text{'index_edit'}) > 10 ? "<br>" : " ";
-		@afters = map { $sep.&ui_link("edit_serv.cgi?id=".$_->{'id'}, "(".$text{'index_edit'}.")" ) } @servers;
+		my $logout = sub {
+			my ($l) = @_;
+			my $logout_link = "";
+			if (&logged_in($l)) {
+			 	$logout_link =
+			 		&ui_link("logout.cgi?id=$l->{'id'}", "(".$text{'index_logout'}.") ");
+			 	}
+			 return $logout_link;
+		};
+		@afters = map { $sep.&$logout($_).&ui_link("edit_serv.cgi?id=".$_->{'id'}, "(".$text{'index_edit'}.")" ) } @servers;
 		@befores = map { &ui_checkbox("d", $_->{'id'}) } @servers;
 		}
 	my @titles = map { &make_iconname($_) } @servers;
-	my @icons = map { "images/$_->{'type'}.gif" } @servers;
+	my @icons = map { -r "images/$_->{'type'}.svg" ? 
+	                    "images/$_->{'type'}.svg" :
+	                    "images/$_->{'type'}.gif" } @servers;
 	my @links = map { !$access{'links'} ? undef :
 		       $_->{'user'} || $_->{'autouser'} ?
 			"link.cgi/$_->{'id'}/" : &make_url($_) } @servers;
@@ -182,9 +196,6 @@ elsif ($_[0]->{'realhost'}) {
 else {
 	$rv = "$_[0]->{'host'}:$_[0]->{'port'}";
 	}
-if (&logged_in($_[0])) {
-	$rv .= "</a> <a href='logout.cgi?id=$_->{'id'}'>(".$text{'index_logout'}.")";
-	}
-return $rv;
+return &html_escape($rv);
 }
 

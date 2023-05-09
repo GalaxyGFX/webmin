@@ -49,10 +49,12 @@ $fold = &find("fold_headers", $conf);
 print &ui_table_row($text{'report_fold'},
 	&yes_no_field("fold_headers", $fold, 1));
 
-# Include details of spam phrases
-$detail = &find("detailed_phrase_score", $conf);
-print &ui_table_row($text{'report_detail'},
-	&yes_no_field("detailed_phrase_score", $detail, 0));
+if (!&version_atleast(2.6)) {
+	# Include details of spam phrases
+	$detail = &find("detailed_phrase_score", $conf);
+	print &ui_table_row($text{'report_detail'},
+		&yes_no_field("detailed_phrase_score", $detail, 0));
+	}
 
 if (!&version_atleast(2.6)) {
 	# Include stars header
@@ -67,10 +69,12 @@ $char = &find("spam_level_char", $conf);
 print &ui_table_row($text{'report_char'},
 	&opt_field("spam_level_char", $char, 2, "*"));
 
-# Remove MIME blocks
-$defang = &find("defang_mime", $conf);
-print &ui_table_row($text{'report_defang'},
-	&yes_no_field("defang_mime", $defang, 1));
+if (!&version_atleast(2.6)) {
+	# Remove MIME blocks
+	$defang = &find("defang_mime", $conf);
+	print &ui_table_row($text{'report_defang'},
+		&yes_no_field("defang_mime", $defang, 1));
+	}
 
 if (&version_atleast(2.6)) {
 	$safe = &find("report_safe", $conf);

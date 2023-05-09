@@ -4,6 +4,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './acl-lib.pl';
 our (%in, %text, %config, %access, $config_directory, $base_remote_user);
 &foreign_require("webmin", "webmin-lib.pl");
@@ -198,6 +200,8 @@ my $salt = chr(int(rand(26))+65).chr(int(rand(26))+65);
 $user{'name'} = $in{'name'};
 $user{'lang'} = !$access{'lang'} ? $old->{'lang'} :
 		$in{'lang_def'} ? undef : $in{'lang'};
+$user{'locale'} = !$access{'locale'} ? $old->{'locale'} :
+		$in{'locale_def'} ? undef : $in{'locale'};
 if (!$access{'theme'}) {
 	$user{'theme'} = $old->{'theme'};
 	$user{'overlay'} = $old->{'overlay'};

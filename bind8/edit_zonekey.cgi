@@ -2,6 +2,8 @@
 # Display the signing key for a zone, or offer to set one up
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %in, %text, $in, %config);
 
 require './bind8-lib.pl';
@@ -55,6 +57,10 @@ if (@keyrecs) {
 			"off", 0, "readonly style='width:90%'"),"<br>\n";
 		print &text('zonekey_privatefile',
 			    "<tt>$key->{'privatefile'}</tt>"),"<br>\n";
+		if ($key->{'algorithm'}) {
+			print &text('zonekey_algorithm',
+				    "<tt>$key->{'algorithm'}</tt>"),"<br>\n";
+			}
 		print &ui_hidden_end();
 		}
 
@@ -69,7 +75,8 @@ if (@keyrecs) {
 	print &ui_hr();
 	print &ui_buttons_start();
 	print &ui_buttons_row("disable_zonekey.cgi", $text{'zonekey_disable'},
-			      $text{'zonekey_disabledesc'},
+			      $text{'zonekey_disabledesc'}."<br>\n".
+			      &ui_checkbox("keep", 1, $text{'zonekey_keep'}, 1),
 			      &ui_hidden("view", $in{'view'}).
 			      &ui_hidden("zone", $in{'zone'}));
 

@@ -166,6 +166,7 @@ opt_empty_recip_default=Default
 opts_swap_bangpath=Rewrite "site!user" to "user@site"
 opts_masquerade_domains=Address masquerading
 opts_masquerade_exceptions=Masquerading exceptions
+opts_resolve_dequoted_address=Prevent use of @ in mailbox names?
 index_return=Postfix configuration
 
 
@@ -294,6 +295,7 @@ opts_relay_domains_reject_code=SMTP server response on forbidden relaying
 opts_unknown_address_reject_code=SMTP server response on unknown domain reject
 opts_unknown_client_reject_code=SMTP server response on unknown client reject
 opts_unknown_hostname_reject_code=SMTP server response on unknown hostname reject
+opts_smtpd_discard_ehlo_keywords=SMTP EHLO keywords to not send
 smtpd_nomap=No map for allowed addresses for relaying has been entered yet.
 smtpd_nomap2=No map for restrictions on sender addresses has been entered yet.
 smtpd_map=Allowed addresses for relaying
@@ -538,6 +540,7 @@ view_sub=Attached Email
 view_body=Message text
 view_afile=Attachment name
 view_atype=Attachment type
+view_aname=Attachment
 view_asize=File size
 
 compose_title=Compose Email
@@ -636,7 +639,10 @@ searchq_none=No queued messages found.
 header_title=Header Checks
 header_ecannot=You are not allowed to edit header checks
 header_eregexp=The header checks map must be in the format <tt>regexp:</tt><i>filename</i>
-opts_header_checks=MIME header checking tables
+opts_header_checks=Header checking tables
+opts_mime_header_checks=MIME header checking tables
+opts_header_checks_no_map=(No header checking map is currently defined. Define a map first, then you can edit it)
+opts_mime_header_checks_no_map=(No MIME header checking map is currently defined. Define a map first, then you can edit it)
 header_name=Regular expression
 header_value=Action for matches
 header_discard=Discard (with log message..)

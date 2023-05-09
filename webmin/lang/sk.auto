@@ -2,9 +2,6 @@ index_refresh=Obnovte moduly
 index_refreshmsg=Skontrolujte, či sú nainštalované všetky servery Webmin, a aktualizujte tie, ktoré sa nachádzajú v kategórii „Nepoužité moduly“.
 
 access_local=Zahrnúť miestnu sieť do zoznamu
-access_elibwrap=Riadenie prístupu k IP pomocou TCP-wrapperov nie je k dispozícii, pretože nie je nainštalovaný modul $1 Perl.
-access_libwrapcpan=<a href='$1'>Kliknite sem</a>, aby Webmin automaticky nainštaloval chýbajúci modul Perl.
-
 access_eip6=$1 nie je úplná adresa IPv6 alebo sieťová adresa
 access_ecidr6=$1 nie je platná veľkosť siete IPv6
 access_ecidr8=Veľkosť siete IPv6 „$1“ musí byť deliteľná 8
@@ -23,6 +20,10 @@ bind_maxconns_per_net=Maximálny počet súčasných pripojení na sieť
 bind_emaxconns=Maximálny počet súčasných pripojení musí byť číslo väčšie ako 1
 bind_emaxconns_per_ip=Maximálny počet súbežných pripojení na jednu adresu IP musí byť číslo väčšie ako 1
 bind_emaxconns_per_net=Maximálny počet súbežných pripojení v sieti musí byť číslo väčšie ako 1
+bind_maxlifetime=Maximálna životnosť procesu Webmin
+bind_maxlifetime_def=Neobmedzene
+bind_maxlifetime_secs=sekúnd
+bind_emaxlifetime=Maximálna životnosť procesu musí byť číslo väčšie ako 60 sekúnd
 
 log_global=&lt;Globálne akcie&gt;
 log_sched=Zaznamenávať naplánované funkcie?
@@ -53,7 +54,6 @@ ui_sizedate=Veľkosť selektora dátumu
 ui_sizemodules=Veľkosť výberu viacerých modulov
 ui_showlogin=Chcete priraďovať používateľské meno titulom stránky?
 ui_showhost=Chcete na názov stránky pridať názov hostiteľa?
-ui_dateformat=Formát zobrazených dátumov
 ui_ehostnamedisplay=Chýba alebo je neplatný zobrazovaný názov hostiteľa
 
 mods_checksig=Skontrolovať podpisový súbor pre stiahnuté moduly?
@@ -67,12 +67,21 @@ os_update=Aktualizujte Webmin, aby používal detekovaný OS
 os_syspath=Zahrnúť vlastnú vyhľadávaciu cestu systému?
 os_perllib=Ďalšie cesty knižnice Perl
 os_incorrect=Operačný systém $1 bol aktualizovaný na verziu $2
+os_release_notes=Poznámky k vydaniu
 os_fix=Aktualizácia zisteného operačného systému
 os_usermin=Aktualizujte tiež Usermin OS
+
+lang_title=Jazyk a miestne nastavenie
+lang_title2=Jazyk a miestne nastavenie Webmin
+lang_lang=Jazyk
+lang_locale=Miestne nastavenie
+lang_dateformat=Formát zobrazenia dátumov
+lang_dateformat_dd/mon/yyyy=dd/mon/yyyy (t.j. 16. september 2001)
 
 ssl_deny=Verzie protokolu SSL, ktoré sa majú odmietnuť
 ssl_compression=Povoliť komprimované pripojenia SSL?
 ssl_honorcipherorder=Vynútiť použitie serverom definovanej objednávky šifry?
+ssl_hsts=Vynútiť SSL s hlavičkou HSTS
 ssl_extracasdef=Rovnaké ako globálne nastavenie SSL
 ssl_extracasnone=Žiadne pre túto IP adresu
 ssl_extracasbelow=Zadané nižšie ..
@@ -106,6 +115,7 @@ ssl_already2=Doteraz vygenerovaná žiadosť o podpísanie certifikátu :
 ssl_letsdesc=Poďme šifrovať je bezplatná, automatizovaná a otvorená certifikačná autorita, ktorú je možné použiť na vygenerovanie certifikátu SSL pre použitie serverom Webmin.
 ssl_letserr=Bohužiaľ, poďme šifrovať nie je možné použiť vo vašom systéme: $1.
 ssl_letserr2=Prípadne si pozrite stránku <a href='$1'>Konfigurácia modulu</a> a uistite sa, že používate správnu cestu k príkazu <tt>letsencrypt</tt>.
+
 ssl_letsdesc2=Táto stránka sa dá použiť na vyžiadanie nového certifikátu, ktorý prepíše všetky ostatné, ktoré sú momentálne nakonfigurované v aplikácii Webmin. Služba Let's Encrypt však vyžaduje, aby bolo vaše vlastníctvo domény certifikátov overené kontrolou, či tento systém je hostiteľom webovej stránky pre túto doménu. To sa dosiahne umiestnením malého dočasného súboru do adresára dokumentov webovej stránky.
 ssl_letsheader=Možnosti pre nový certifikát SSL
 ssl_letsdoms=Názvy hostiteľov pre certifikát
@@ -136,6 +146,10 @@ startpage_moduleup=Zobraziť aktualizácie modulov na stránke Systémové infor
 
 upgrade_descdeb=Tento formulár vám umožňuje inovovať celú inštaláciu Webminu na novú verziu inovovaním jeho balíka Debian. Môžete nainštalovať z miestneho súboru.deb, nahraného súboru alebo z najnovšej verzie na stránke <a href=http://www.webmin.com/>www.webmin.com</a>. Rovnako ako pri manuálnej inovácii sa zachovajú všetky vaše konfiguračné nastavenia a moduly tretích strán.
 upgrade_descsun-pkg=Tento formulár vám umožňuje inovovať celú inštaláciu Webminu na novú verziu z balíka Solaris dodávaného spoločnosťou Sun. Môžete nainštalovať z lokálneho súboru balíka Solaris alebo z nahraného súboru. Najnovšie balíky nájdete na adrese <a href=http://www.sun.com/bigadmin/content/webmin/>http://www.sun.com/bigadmin/content/webmin/</a>. Rovnako ako pri manuálnej inovácii sa zachovajú všetky vaše konfiguračné nastavenia a moduly tretích strán.
+upgrade_setup=Spustenie skriptu <tt>setup.sh</tt> na aktualizáciu Webminu ..
+upgrade_setuprpm=Spustenie <tt>RPM</tt> na inováciu Webmin ..
+upgrade_setupdeb=Spustenie <tt>DPKG</tt> na inováciu Webmin ..
+upgrade_setuppackage=Spustenie <tt>pkgadd</tt> na inováciu Webmin ..
 upgrade_ezip=Po nainštalovaní v systéme Windows nefunguje aktualizácia produktu Webmin. Namiesto toho inovujte manuálne.
 upgrade_eportage=Funkcia aktualizácie Webminu momentálne nefunguje, ak ste nainštalovali z balíka Portage. Namiesto toho inovujte pomocou nástrojov Portage.
 upgrade_eroot=Webmin nie je možné upgradovať, keď je jeho kód zdieľaný s iným systémom, napríklad keď je spustený vo vnútri zóny alebo pripojený cez NFS.
@@ -175,9 +189,13 @@ session_ecmd=Chýbajúci alebo neplatný príkaz na zmenu hesla
 session_banner=Banner pred prihlásením
 session_pmodedesc3=Zásady vypršania platnosti hesla
 session_md5=Formát hashovania hesla webmin
-session_sha512=Použite šifrovanie SHA512
-session_emd5mod=Nie je možné použiť šifrovanie MD5, pretože nie je nainštalovaný modul Perl $1.
-session_esha512mod=Šifrovanie SHA512 nemožno použiť, pretože nie je nainštalovaný modul Perl $1.
+session_md5off=Automaticky určiť
+session_md5on=Použite formát hash <tt>MD5</tt>
+session_sha512=Použite formát hash <tt>SHA512</tt>
+session_yescrypt=Použite formát hash <tt>yescrypt</tt>
+session_emd5mod=Formát hash MD5 nemožno použiť, pretože nie je nainštalovaný modul Perl $1
+session_esha512mod=Formát hash SHA512 nemožno použiť, pretože nie je nainštalovaný modul Perl $1
+session_eyescrypt=Formát hash yescrypt nemožno použiť, pretože nie je nainštalovaný modul Perl $1
 session_blocklock=Zamknite tiež používateľov, ktorým sa nepodarilo prihlásiť
 session_passapi=Povoliť API na vzdialenú zmenu hesla?
 session_passapi0=API zakázané
@@ -242,6 +260,7 @@ advanced_precache0=nikto
 advanced_precache1=Textové súbory v anglickom jazyku
 advanced_precache2=Súbory zodpovedajúce vzorom shellu $1
 advanced_eprecache=Chýba zoznam vzorov shellu na predbežné vyrovnávanie
+advanced_etempallowed=Adresár dočasných súborov $1 je systémový adresár
 advanced_tempmods=Dočasné adresáre pre jednotlivé moduly
 advanced_umask=Umask (zrušené bity povolení) pre vytvorené súbory
 advanced_gzip=Komprimovať statické súbory gzip?
@@ -403,6 +422,16 @@ web_expirespaths=Časy vyrovnávacej pamäte na strane klienta založené na ces
 web_expirespath=Cesta regulárny výraz
 web_expirestime=Čas vyrovnávacej pamäte v sekundách
 web_eexpires2=Chýbajúci alebo nečíselný čas vyrovnávacej pamäte na strane klienta v riadku $1
+web_rediruurl=Adresa URL presmerovania prepnutia po prihlásení
+web_redirdesc=Prepíše adresy URL interného presmerovania
+web_eredirurl=„$1“ obsahuje medzery a nie je platnou adresou URL
+web_redirhost=Presmerovať hostiteľa
+web_eredirhost='$1' nie je platný názov hostiteľa
+web_redirport=Port presmerovania
+web_redirpref=Predpona presmerovania
+web_eredirpref=Predpona musí začínať lomkou
+web_eredirpref2=Predpona nesmie obsahovať medzery
+web_redirssl=Presmerovanie SSL
 
 webmincron_title=Webmin Scheduled Functions
 webmincron_emodule=Modul Webmin Cron Jobs nie je nainštalovaný!

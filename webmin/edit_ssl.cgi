@@ -3,6 +3,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 
 require "./webmin-lib.pl";
 
@@ -54,6 +56,9 @@ print ui_table_start($text{'ssl_header'}, undef, 2);
 print ui_table_row($text{'ssl_on'},
 	ui_yesno_radio("ssl", $miniserv{'ssl'}));
 
+print ui_table_row($text{'ssl_hsts'},
+	ui_yesno_radio("ssl_hsts", $miniserv{'ssl_hsts'}));
+
 print ui_table_row($text{'ssl_key'},
 	ui_textbox("key", $miniserv{'keyfile'}, 40)." ".
 	file_chooser_button("key"));
@@ -62,9 +67,6 @@ print ui_table_row($text{'ssl_cert'},
 	ui_opt_textbox("cert", $miniserv{'certfile'}, 40,
 			$text{'ssl_cert_def'}."<br>",$text{'ssl_cert_oth'})." ".
 	file_chooser_button("cert"));
-
-print ui_table_row($text{'ssl_redirect'},
-	ui_yesno_radio("ssl_redirect", $miniserv{'ssl_redirect'}));
 
 print ui_table_row($text{'ssl_version'},
 	ui_opt_textbox("version", $miniserv{'ssl_version'}, 4,

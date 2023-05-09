@@ -5,6 +5,12 @@ use WebminCore;
 &init_config();
 %access = &get_module_acl();
 
+# Fix language strings that refer to MySQL
+if (&foreign_check("mysql")) {
+	&foreign_require("mysql");
+	&mysql::fix_mysql_text(\%text);
+	}
+
 # get_config_fmt(file)
 # Returns a format code for php.ini or FPM config files
 sub get_config_fmt
@@ -98,86 +104,93 @@ local @rv = map { $_->{'value'} } &find(@_);
 return $rv[0];
 }
 
-# save_directive(&config, name, [value], [newsection], [neverquote])
+# save_directive(&config, name, [value|&values], [newsection], [neverquote])
 # Updates a single entry in the PHP config file
 sub save_directive
 {
-local ($conf, $name, $value, $newsection, $noquote) = @_;
+local ($conf, $name, $values, $newsection, $noquote) = @_;
+my @values = ref($values) ? @$values : ( $values );
 $newsection ||= "PHP";
-local $old = &find($name, $conf, 0);
-local $cmt = &find($name, $conf, 1);
-local $fmt = $old ? $old->{'fmt'} : @$conf ? $conf->[0]->{'fmt'} : "fpm";
-local $lref;
-if ($fmt eq "ini") {
-	$newline = $name." = ".
-		   ($value !~ /\s/ || $noquote ? $value :
-		    $value =~ /"/ ? "'$value'" : "\"$value\"");
-	}
-else {
-	my $n = !$old || $old->{'admin'} ? "php_admin_value" : "php_value";
-	$newline = $n."[".$name."] = ".$value;
-	}
-if (defined($value) && $old) {
-	# Update existing value
-	$lref = &read_file_lines_as_user($old->{'file'});
-	$lref->[$old->{'line'}] = $newline;
-	$old->{'value'} = $value;
-	}
-elsif (defined($value) && !$old && $cmt) {
-	# Update existing commented value
-	$lref = &read_file_lines_as_user($cmt->{'file'});
-	$lref->[$cmt->{'line'}] = $newline;
-	$cmt->{'value'} = $value;
-	$cmt->{'enabled'} = 1;
-	}
-elsif (defined($value) && !$old && !$cmt) {
-	# Add a new value, at the end of the section
-	my ($lastline, $lastfile);
+my @old = &find($name, $conf, 0);
+my @cmt = &find($name, $conf, 1);
+my $fmt = @old ? $old[0]->{'fmt'} : @$conf ? $conf->[0]->{'fmt'} : "fpm";
+my $lref;
+for(my $i=0; $i<@old || $i<@values; $i++) {
+	my $old = $i<@old ? $old[$i] : undef;
+	my $value = $i<@values ? $values[$i] : undef;
+	my $cmt = $i<@cmt ? $cmt[$i] : undef;
 	if ($fmt eq "ini") {
-		# Find last directive in requested php.ini section
-		my $last;
-		foreach my $c (@$conf) {
-			if ($c->{'section'} eq $newsection) {
-				$last = $c;
-				}
-			}
-		$last || &error("Could not find any values in ".
-				"section $newsection");
-		$lastfile = $last->{'file'};
-		$lastline = $last->{'line'};
-		$lref = &read_file_lines_as_user($lastfile);
+		$newline = $name." = ".
+			   ($value !~ /\s/ || $noquote ? $value :
+			    $value =~ /"/ ? "'$value'" : "\"$value\"");
 		}
 	else {
-		# Just add at the end
-		$lastfile = @$conf ? $conf->[0]->{'file'} : undef;
-		$lastfile || &error("Don't know which file to add to");
-		$lref = &read_file_lines_as_user($lastfile);
-		$lastline = scalar(@$lref);
+		my $n = !$old || $old->{'admin'} ? "php_admin_value"
+						 : "php_value";
+		$newline = $n."[".$name."] = ".$value;
 		}
+	if (defined($value) && $old) {
+		# Update existing value
+		$lref = &read_file_lines_as_user($old->{'file'});
+		$lref->[$old->{'line'}] = $newline;
+		$old->{'value'} = $value;
+		}
+	elsif (defined($value) && !$old && $cmt) {
+		# Update existing commented value
+		$lref = &read_file_lines_as_user($cmt->{'file'});
+		$lref->[$cmt->{'line'}] = $newline;
+		$cmt->{'value'} = $value;
+		$cmt->{'enabled'} = 1;
+		}
+	elsif (defined($value) && !$old && !$cmt) {
+		# Add a new value, at the end of the section
+		my ($lastline, $lastfile);
+		if ($fmt eq "ini") {
+			# Find last directive in requested php.ini section
+			my $last;
+			foreach my $c (@$conf) {
+				if ($c->{'section'} eq $newsection) {
+					$last = $c;
+					}
+				}
+			$last || &error("Could not find any values in ".
+					"section $newsection");
+			$lastfile = $last->{'file'};
+			$lastline = $last->{'line'};
+			$lref = &read_file_lines_as_user($lastfile);
+			}
+		else {
+			# Just add at the end
+			$lastfile = @$conf ? $conf->[0]->{'file'} : undef;
+			$lastfile || &error("Don't know which file to add to");
+			$lref = &read_file_lines_as_user($lastfile);
+			$lastline = scalar(@$lref);
+			}
 
-	# Found last value in the section - add after it
-	splice(@$lref, $lastline+1, 0, $newline);
-	&renumber($conf, $lastline, 1);
-	push(@$conf, { 'name' => $name,
-		       'value' => $value,
-		       'enabled' => 1,
-		       'file' => $lastfile,
-		       'line' => $lastline+1,
-		       'section' => $newsection,
-		     });
-	}
-elsif (!defined($value) && $old && $cmt) {
-	# Totally remove a value
-	$lref = &read_file_lines_as_user($old->{'file'});
-	splice(@$lref, $old->{'line'}, 1);
-	@$conf = grep { $_ ne $old } @$conf;
-	&renumber($conf, $old->{'line'}, -1);
-	}
-elsif (!defined($value) && $old && !$cmt) {
-	# Turn a value into a comment
-	$lref = &read_file_lines_as_user($old->{'file'});
-	$old->{'enabled'} = 0;
-	$lref->[$old->{'line'}] = "; ".$lref->[$old->{'line'}];
+		# Found last value in the section - add after it
+		splice(@$lref, $lastline+1, 0, $newline);
+		&renumber($conf, $lastline, 1);
+		push(@$conf, { 'name' => $name,
+			       'value' => $value,
+			       'enabled' => 1,
+			       'file' => $lastfile,
+			       'line' => $lastline+1,
+			       'section' => $newsection,
+			     });
+		}
+	elsif (!defined($value) && $old && $cmt) {
+		# Totally remove a value
+		$lref = &read_file_lines_as_user($old->{'file'});
+		splice(@$lref, $old->{'line'}, 1);
+		@$conf = grep { $_ ne $old } @$conf;
+		&renumber($conf, $old->{'line'}, -1);
+		}
+	elsif (!defined($value) && $old && !$cmt) {
+		# Turn a value into a comment
+		$lref = &read_file_lines_as_user($old->{'file'});
+		$old->{'enabled'} = 0;
+		$lref->[$old->{'line'}] = "; ".$lref->[$old->{'line'}];
+		}
 	}
 }
 
@@ -223,6 +236,8 @@ sub list_php_configs
 {
 local @rv;
 &get_default_php_ini();		# Force copy of sample ini file
+
+# Add system-wide INI files
 if ($access{'global'}) {
 	foreach my $ai (split(/\t+/, $config{'php_ini'})) {
 		local ($f, $d) = split(/=/, $ai);
@@ -233,6 +248,8 @@ if ($access{'global'}) {
 			}
 		}
 	}
+
+# Add INI files from ACL
 foreach my $ai (split(/\t+/, $access{'php_inis'})) {
 	local ($f, $d) = split(/=/, $ai);
 	foreach my $fp (split(/,/, $f)) {
@@ -241,12 +258,16 @@ foreach my $ai (split(/\t+/, $access{'php_inis'})) {
 			}
 		}
 	}
+
+# Convert dirs to files
 foreach my $i (@rv) {
 	if (-d $i->[0] && -r "$i->[0]/php.ini") {
 		$i->[0] = "$i->[0]/php.ini";
 		}
 	}
-if ($access{'global'} && &foreign_installed("virtual-server")) {
+
+# Add PHP INI files from Virtualmin
+if ($access{'global'} && &foreign_check("virtual-server")) {
 	&foreign_require("virtual-server");
 	foreach my $v (&virtual_server::list_available_php_versions()) {
 		if ($v->[0]) {
@@ -255,8 +276,45 @@ if ($access{'global'} && &foreign_installed("virtual-server")) {
 			}
 		}
 	}
+
 my %done;
 return grep { !$done{$_->[0]}++ } @rv;
+}
+
+# get_php_ini_binary(file)
+# Given a php.ini path, try to guess the php command for it
+sub get_php_ini_binary
+{
+my ($file) = @_;
+
+# Possible php.ini under domain's home dir
+if (&foreign_check("virtual-server")) {
+	&foreign_require("virtual-server");
+	my %vmap = map { $_->[0], $_ }
+		       &virtual_server::list_available_php_versions();
+	if ($file =~ /etc\/php(\S+)\/php.ini/) {
+		my $ver = $1;
+		my $nodot = $ver;
+		$nodot =~ s/\.//g;
+		my $php = $vmap{$ver} || $vmap{$nodot};
+		if ($php && $php->[1]) {
+			my $binary = $php->[1];
+			$binary =~ s/-cgi//;
+			return $binary;
+			}
+		}
+	}
+
+# Try to get version from the path
+if ($fle =~ /php(\d+)/) {
+	my $ver = $1;
+	my $nodot = $ver;
+	$nodot =~ s/\.//g;
+	my $binary = &has_command("php$ver") ||
+		     &has_command("php$nodot");
+	return $binary if ($binary);
+	}
+return &has_command("php");
 }
 
 # onoff_radio(name)
@@ -292,12 +350,41 @@ if ($file && &get_config_fmt($file) eq "fpm" &&
 	# Looks like FPM format ... maybe a pool restart is needed
 	&foreign_require("virtual-server");
 	if (defined(&virtual_server::restart_php_fpm_server)) {
+		my $conf;
+		if (-r $file) {
+			my @conf;
+			@conf = grep { &is_under_directory($_->{'dir'}, $file) }
+				     &virtual_server::list_php_fpm_configs();
+			if (@conf) {
+				$conf = &virtual_server::get_php_fpm_config(
+						$conf[0]->{'shortversion'});
+				}
+			}
 		&virtual_server::push_all_print();
 		&virtual_server::set_all_null_print();
-		&virtual_server::restart_php_fpm_server();
+		&virtual_server::restart_php_fpm_server($conf);
 		&virtual_server::pop_all_print();
 		}
 	}
+if ($file && &get_config_fmt($file) eq "ini" &&
+	&foreign_installed("virtual-server") && 
+	&foreign_installed("virtualmin-nginx")) {
+	&foreign_require("virtual-server");
+	&foreign_require("virtualmin-nginx", "virtual_feature.pl");
+	my @dom = grep { &is_under_directory($_->{'home'}, $file) } 
+	              &virtual_server::list_domains();
+	&virtualmin_nginx::feature_restart_web_php($dom[0])
+	    if (@dom);
+	}
+}
+
+# should_switch_user(file)
+# Returns 1 if file ops should be done as the access user
+sub should_switch_user
+{
+my ($file) = @_;
+return $access{'user'} && $access{'user'} ne 'root' && $< == 0 &&
+       !&is_under_directory("/etc", $file);
 }
 
 # get_config_as_user([file])
@@ -305,7 +392,7 @@ if ($file && &get_config_fmt($file) eq "fpm" &&
 sub get_config_as_user
 {
 local ($file) = @_;
-if ($access{'user'} && $access{'user'} ne 'root' && $< == 0) {
+if (&should_switch_user($file)) {
 	local $rv = &eval_as_unix_user(
 		$access{'user'}, sub { &get_config($file) });
 	if ((!$rv || !@$rv) && $!) {
@@ -322,7 +409,7 @@ else {
 sub read_file_contents_as_user
 {
 local ($file) = @_;
-if ($access{'user'} && $access{'user'} ne 'root' && $< == 0) {
+if (&should_switch_user($file)) {
 	return &eval_as_unix_user(
 		$access{'user'}, sub { &read_file_contents($file) });
 	}
@@ -336,7 +423,7 @@ else {
 sub write_file_contents_as_user
 {
 local ($file, $data) = @_;
-if ($access{'user'} && $access{'user'} ne 'root' && $< == 0) {
+if (&should_switch_user($file)) {
 	return &eval_as_unix_user(
                 $access{'user'}, sub { &write_file_contents($file, $data) });
 	}
@@ -349,7 +436,7 @@ else {
 sub read_file_lines_as_user
 {
 local @args = @_;
-if ($access{'user'} && $access{'user'} ne 'root' && $< == 0) {
+if (&should_switch_user($file)) {
 	return &eval_as_unix_user(
 		$access{'user'}, sub { &read_file_lines(@args) });
 	}
@@ -363,13 +450,39 @@ else {
 sub flush_file_lines_as_user
 {
 local ($file, $eof, $ignore) = @_;
-if ($access{'user'} && $access{'user'} ne 'root' && $< == 0) {
+if (&should_switch_user($file)) {
 	&eval_as_unix_user($access{'user'}, 
 		sub { &flush_file_lines($file, $eof, $ignore) });
 	}
 else {
 	&flush_file_lines($file, $eof, $ignore);
 	}
+}
+
+# list_available_extensions(&conf, file)
+# Returns a list of all available PHP extension modules
+sub list_available_extensions
+{
+my ($conf, $file) = @_;
+my $dir = &find_value("extension_dir", $conf);
+if (!$dir) {
+	# Figure it out from the PHP command
+	my $binary = &get_php_ini_binary($file);
+	if ($binary) {
+		my $out = &backquote_command("$binary -i 2>/dev/null </dev/null");
+		if ($out =~ /extension_dir\s+=>\s+(\S+)/) {
+			$dir = $1;
+			}
+		}
+	}
+if ($dir) {
+	# Get all the extensions
+	opendir(DIR, $dir);
+	my @exts = grep { /\.so$/ } readdir(DIR);
+	closedir(DIR);
+	return @exts;
+	}
+return ();
 }
 
 1;

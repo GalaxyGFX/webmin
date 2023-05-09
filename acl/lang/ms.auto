@@ -1,6 +1,7 @@
 index_screate=Buat pengguna selamat yang baru.
 
 edit_title3=Buat Pengguna Webmin Selamat
+edit_locale=Tempatan
 edit_safe=Tahap keistimewaan
 edit_safe0=Tidak terkawal
 edit_safe1=Modul selamat sahaja
@@ -10,11 +11,15 @@ save_eunixname=Nama pengguna '$1' bukan pengguna Unix, dan oleh itu tidak boleh 
 
 delete_eanonuser=Pengguna ini sedang digunakan untuk akses modul tanpa nama
 
+acl_locale=Boleh tukar tempat?
+
 sync_modify=Ganti nama pengguna Webmin yang sepadan apabila pengguna Unix dinamakan semula.
 
 sessions_actions=Tindakan..
+sessions_all=Semua sesi..
 sessions_logouts=Juga tunjukkan sesi log keluar..
 sessions_state=Negeri
+sessions_action=Tindakan
 sessions_this=Log masuk ini
 sessions_in=Log masuk
 sessions_out=Logged out

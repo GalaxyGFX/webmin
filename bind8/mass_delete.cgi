@@ -2,6 +2,8 @@
 # Delete a bunch of zones, after asking for confirmation
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in);
 
 require './bind8-lib.pl';
@@ -93,7 +95,7 @@ else {
 			}
 
 		# delete any keys
-		&delete_dnssec_key($zconf);
+		&delete_dnssec_key($zconf, 0);
 
 		# remove the zone directive
 		&lock_file(&make_chroot($zconf->{'file'}));

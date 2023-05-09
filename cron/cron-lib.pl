@@ -310,7 +310,7 @@ elsif ($fcron) {
 	}
 else {
 	system("cp ".&translate_filename("$config{'cron_dir'}/$_[0]->{'user'}").
-	       " $cron_temp_file 2>/dev/null");
+	       " ".quotemeta($cron_temp_file)." 2>/dev/null");
 	}
 }
 
@@ -378,7 +378,7 @@ else {
 	$_[0]->{'line'} = 0;
 	splice(@$lref, 0, 0, &cron_job_line($_[0]));
 	&flush_file_lines();
-	system("chown $_[0]->{'user'} $cron_temp_file");
+	&set_ownership_permissions($_[0]->{'user'}, undef, undef, $cron_temp_file);
 	&copy_crontab($_[0]->{'user'});
 	$_[0]->{'file'} = "$config{'cron_dir'}/$_[0]->{'user'}";
 	$_[0]->{'index'} = scalar(@cron_jobs_cache);
@@ -497,8 +497,8 @@ if (&read_file_contents($cron_temp_file) =~ /\S/) {
 	local $rv;
 	if (!&has_crontab_cmd()) {
 		# We have no crontab command .. emulate by copying to user file
-		$rv = system("cat $cron_temp_file".
-			" >$config{'cron_dir'}/$_[0] 2>/dev/null");
+		$rv = system("cat ".quotemeta($cron_temp_file).
+			" >".quotemeta("$config{'cron_dir'}/$_[0]")." 2>/dev/null");
 		&set_ownership_permissions($_[0], undef, 0600,
 			"$config{'cron_dir'}/$_[0]");
 		}
@@ -518,12 +518,12 @@ if (&read_file_contents($cron_temp_file) =~ /\S/) {
 		chdir("/");
 		if ($single_user) {
 			$rv = system($config{'cron_user_edit_command'}.
-				     " >$temp 2>&1 <$notemp");
+				     " >".quotemeta($temp)." 2>&1 <".quotemeta($notemp));
 			}
 		else {
 			$rv = system(
 				&user_sub($config{'cron_edit_command'},$_[0]).
-				" >$temp 2>&1 <$notemp");
+				" >".quotemeta($temp)." 2>&1 <".quotemeta($notemp));
 			}
 		unlink($notemp);
 		chdir($oldpwd);
@@ -533,12 +533,12 @@ if (&read_file_contents($cron_temp_file) =~ /\S/) {
 		if ($single_user) {
 			$rv = &execute_command(
 				$config{'cron_user_copy_command'},
-				$cron_temp_file, $temp, $temp);
+				quotemeta($cron_temp_file), quotemeta($temp), quotemeta($temp));
 			}
 		else {
 			$rv = &execute_command(
 				&user_sub($config{'cron_copy_command'}, $_[0]),
-				$cron_temp_file, $temp, $temp);
+				quotemeta($cron_temp_file), quotemeta($temp), quotemeta($temp));
 			}
 	}
 	local $out = &read_file_contents($temp);
@@ -1209,63 +1209,6 @@ foreach $w (@wds) {
 $_[0]->{'weekdays'} = join(",", @wds);
 }
 
-=head2 create_wrapper(wrapper-path, module, script)
-
-Creates a wrapper script which calls a script in some module's directory
-with the proper webmin environment variables set. This should always be used
-when setting up a cron job, instead of attempting to run a command in the
-module directory directly.
-
-The parameters are :
-
-=item wrapper-path - Full path to the wrapper to create, like /etc/webmin/yourmodule/foo.pl
-
-=item module - Module containing the real script to call.
-
-=item script - Program within that module for the wrapper to run.
-
-=cut
-sub create_wrapper
-{
-local $perl_path = &get_perl_path();
-&open_tempfile(CMD, ">$_[0]");
-&print_tempfile(CMD, <<EOF
-#!$perl_path
-open(CONF, "<$config_directory/miniserv.conf") || die "Failed to open $config_directory/miniserv.conf : \$!";
-while(<CONF>) {
-        \$root = \$1 if (/^root=(.*)/);
-        }
-close(CONF);
-\$root || die "No root= line found in $config_directory/miniserv.conf";
-\$ENV{'PERLLIB'} = "\$root";
-\$ENV{'WEBMIN_CONFIG'} = "$ENV{'WEBMIN_CONFIG'}";
-\$ENV{'WEBMIN_VAR'} = "$ENV{'WEBMIN_VAR'}";
-delete(\$ENV{'MINISERV_CONFIG'});
-EOF
-	);
-if ($gconfig{'os_type'} eq 'windows') {
-	# On windows, we need to chdir to the drive first, and use system
-	&print_tempfile(CMD, "if (\$root =~ /^([a-z]:)/i) {\n");
-	&print_tempfile(CMD, "       chdir(\"\$1\");\n");
-	&print_tempfile(CMD, "       }\n");
-	&print_tempfile(CMD, "chdir(\"\$root/$_[1]\");\n");
-	&print_tempfile(CMD, "exit(system(\"\$root/$_[1]/$_[2]\", \@ARGV));\n");
-	}
-else {
-	# Can use exec on Unix systems
-	if ($_[1]) {
-		&print_tempfile(CMD, "chdir(\"\$root/$_[1]\");\n");
-		&print_tempfile(CMD, "exec(\"\$root/$_[1]/$_[2]\", \@ARGV) || die \"Failed to run \$root/$_[1]/$_[2] : \$!\";\n");
-		}
-	else {
-		&print_tempfile(CMD, "chdir(\"\$root\");\n");
-		&print_tempfile(CMD, "exec(\"\$root/$_[2]\", \@ARGV) || die \"Failed to run \$root/$_[2] : \$!\";\n");
-		}
-	}
-&close_tempfile(CMD);
-chmod(0755, $_[0]);
-}
-
 =head2 cron_file(&job)
 
 Returns the file that a cron job is in, or will be in when it is created
@@ -1692,6 +1635,13 @@ elsif ($job->{'special'} eq 'weekly') {
 		 'days' => '*',
 		 'months' => '*',
 		 'weekdays' => 0 };
+	}
+elsif ($job->{'special'} eq 'monthly') {
+	$job = { 'mins' => 0,
+		 'hours' => 0,
+		 'days' => '1',
+		 'months' => '*',
+		 'weekdays' => '*' };
 	}
 elsif ($job->{'special'} eq 'yearly') {
 	$job = { 'mins' => 0,

@@ -2,6 +2,8 @@
 # Show hosts in BIND cluster
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text);
 
 require './bind8-lib.pl';
@@ -44,9 +46,10 @@ if (@servers) {
 	print &ui_columns_end();
 	print &ui_links_row(\@links);
 	print &ui_form_end([ [ "delete", $text{'slaves_delete'} ] ]);
+	print "<p>";
 	}
 else {
-	print "<b>$text{'slaves_none'}</b><p>\n";
+	print "<p>$text{'slaves_none'}</p>\n";
 	}
 
 # Get all Webmin servers and groups
@@ -106,7 +109,7 @@ if (@addservers || @groups) {
 	print &ui_form_end([ [ undef, $text{'slaves_ok'} ] ]);
 	}
 else {
-	print "<b>",&text('slaves_need', '../servers/'),"</b><p>\n";
+	print "<p>",&text('slaves_need', '../servers/'),"</p>\n";
 	}
 
 &ui_print_footer("", $text{'index_return'});

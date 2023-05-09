@@ -158,6 +158,7 @@ usave_ereal='$1' nav derīgs īstais vārds
 usave_ehome='$1' nav derīgs mājas direktorijs
 usave_esgname='$1' nav derīgs sekundārās grupas nosaukums
 usave_ehomepath=Jums nav atļauts izveidot mājas direktoriju $1
+usave_ehomeslash=Mājas direktorija $1 nevar beigties ar /
 usave_eshell=“$1” nav pieļaujams apvalks
 usave_egid='$1' nav derīga grupa
 usave_egcreate=Jums nav atļauts izveidot jaunas grupas jauniem lietotājiem
@@ -179,9 +180,8 @@ usave_echmod=Nevarēja atvērt chmod mājas direktoriju : $1
 usave_eoffice=Office nevar saturēt rakstzīmi:
 usave_eworkph=Darba tālrunī nedrīkst būt rakstzīme:
 usave_ehomeph=Mājas tālrunī nedrīkst būt rakstzīme:
-usave_edigestmd5=Jūsu sistēmā ir iespējotas MD5 paroles, taču Perl <tt>$3</tt> modulis nav instalēts. <p>Lai piespiestu izmantot normālas šifrētas paroles, pielāgojiet<a href='$1'> moduļa konfigurācija </a>.<p> Vai arī Webmin <a href='$2'>lejupielādējiet un instalējiet</a> <tt>$3</tt> modulis jums.
-usave_edigestblowfish=Jūsu sistēmā ir iespējotas Blowfish paroles, taču Perl <tt>$3</tt> modulis nav instalēts. <p>Lai piespiestu izmantot normālas šifrētas paroles, pielāgojiet<a href='$1'> moduļa konfigurācija </a>.<p> Vai arī Webmin <a href='$2'>lejupielādējiet un instalējiet</a> <tt>$3</tt> modulis jums.
-usave_edigestsha512=Jūsu sistēmā ir iespējotas Blowfish paroles, taču funkcija <tt>kripta</tt> neatbalsta šo formātu.
+usave_edigestmod=Jūsu sistēmā ir iespējotas $4 paroles, taču Perl <tt>$3</tt> modulis nav instalēts. Lai piespiestu izmantot parastās šifrētās paroles, pielāgojiet <a href='$1'>moduļa konfigurāciju</a> vai palūdziet Webmin <a href='$2'>lejupielādēt un instalēt</a> <tt>$3</tt>.
+usave_edigestcrypt=Jūsu sistēmā ir iespējotas $4 paroles, bet funkcija <tt>crypt</tt> neatbalsta šo formātu. Lai piespiestu izmantot parastās šifrētās paroles, pielāgojiet savu <a href='$1'>moduļa konfigurāciju</a>.
 usave_emaking=Pirms atjaunināšanas komanda neizdevās : $1
 usave_epasswd_min=Parolei jābūt vismaz $1 garai
 usave_epasswd_re=Parole neatbilst regexp $1

@@ -1,6 +1,7 @@
 index_screate=Crea un nuevo usuario seguro.
 
 edit_title3=Crear usuario seguro de Webmin
+edit_locale=Lugar
 edit_safe=Nivel de privilegio
 edit_safe0=Irrestricto
 edit_safe1=Solo módulos seguros
@@ -10,11 +11,15 @@ save_eunixname=El nombre de usuario '$1' no es un usuario de Unix, por lo que no
 
 delete_eanonuser=Este usuario se está utilizando para acceder al módulo anónimo
 
+acl_locale=¿Se puede cambiar de ubicación?
+
 sync_modify=Cambie el nombre del usuario de Webmin coincidente cuando se cambie el nombre de un usuario de Unix.
 
 sessions_actions=Comportamiento..
+sessions_all=Todas las sesiones..
 sessions_logouts=Mostrar también sesiones cerradas.
 sessions_state=Estado
+sessions_action=Comportamiento
 sessions_this=Este inicio de sesión
 sessions_in=Conectado
 sessions_out=Desconectado

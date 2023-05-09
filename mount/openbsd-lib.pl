@@ -25,7 +25,7 @@ while(<FSTAB>) {
 	$rv[$i]->[5] = "yes";
 	@o = split(/,/ , $p[3] eq "defaults" ? "" : $p[3]);
 	if (($j = &indexof("noauto", @o)) >= 0) {
-		# filesytem is not mounted at boot
+		# filesystem is not mounted at boot
 		splice(@o, $j, 1);
 		$rv[$i]->[5] = "no";
 		}
@@ -232,9 +232,9 @@ sub disk_space
 {
 if (&get_mounted($_[1], "*") < 0) { return (); }
 if ($_[0] eq "proc" || $_[0] eq "swap") { return (); }
-if (&backquote_command("df -k ".quotemeta($_[1]), 1) =~
-    /Mounted on\n\S+\s+(\S+)\s+\S+\s+(\S+)/) {
-	return ($1, $2);
+my $out = &backquote_command("df -k ".quotemeta($_[1]), 1);
+if ($out =~ /Mounted on\n\S+\s+(?<total>\S+)\s+(?<used>\S+)\s+(?<free>\S+)\s+(?<percent>\d+)/) {
+	return ("$+{total}", "$+{free}", "$+{used}", "$+{percent}");
 	}
 return ( );
 }

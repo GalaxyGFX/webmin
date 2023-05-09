@@ -217,9 +217,6 @@ os_envs=Variables de entorno adicionales
 os_name=Nombre de variable
 os_value=Valor
 
-lang_title=Idioma
-lang_title2=Idioma de Webmin
-lang_lang=Mostrar en idioma
 lang_intro=Esta página le permite seleccionar qué idioma utilizará Webmin para mostrar los títulos, las peticiones de datos y los mensajes.
 lang_ok=Cambiar Idioma
 lang_accept=¿Utilizar idioma especificado por el navegador?
@@ -241,8 +238,8 @@ ssl_key=Archivo de clave privada
 ssl_cert=Archivo de Certificado
 ssl_cert_def=El mismo archivo que la clave privada
 ssl_cert_oth=Archivo separado
-ssl_redirect=¿Redireccionar peticiones no SSL al modo SSL?
 ssl_extracas=Archivos de certificado adicionales<br>(para certificados encadenados)
+ssl_redirect=¿Redireccionar peticiones no SSL al modo SSL?
 ssl_err=Fallo al salvar las opciones SSL
 ssl_ekey=La clave privada SSL $1 no existe o no contiene una clave de formato PEM
 ssl_ecert=El archivo de certificado SSL $1 no existe, o bien no contiene un certificado de formato PEM
@@ -321,9 +318,6 @@ upgrade_egzip=No pude hacer gunzip de archivo: $1
 upgrade_etar=No es un archivo tar válido de Webmin
 upgrade_euntar=No pude hacer untar de archivo: $1
 upgrade_emod=El archivo es un módulo de Webmin y no una completa mejora de Webmin. Quizá quiera usar la página de los <a href='$1'>Módulos de Webmin</a> para instalarlo.
-upgrade_setup=Ejecutando el guión setup.sh para mejorar Webmin... Por favor, espera un minuto hasta que se complete antes de continuar.
-upgrade_setuprpm=Ejecutando RPM para mejorar Webmin... Por favor, espera un minuto hasta que termine antes de continuar.
-upgrade_setuppackage=Ejecutando pkgadd para mejorar Webmin... Por favor, espera un minuto hasta que termine antes de continuar.
 upgrade_esolaris=La característica de mejora de Webmin no funciona en este momento si has instalado de un paquete Solaris. Por favor mejora de forma manual.
 upgrade_eusermin=El archivo es Usermin versión $1, no es una actualización de Webmin.
 upgrade_updates=Hay $1 actualizaciones para esta nueva versión de Webmin. <a href='$2'>Haz click aquí</a> para automáticamente descargarlas e instalarlas ahora.
@@ -428,8 +422,6 @@ session_eextauth=Programa de autenticación externa no válido o sin introducir
 session_pmode0=Denegar siempre acceso a usuarios con el password expirado
 session_pmode1=Permitir siempre acceso a usuarios con el password expirado
 session_pmode2=Pedir a los usuarios con el password expirado que introduzcan uno nuevo
-session_md5off=Utilizar encriptación <tt>crypt</tt> estándar Unix para los password de Webmin
-session_md5on=Utilizar encriptación MD5 para los passwords de Webmin (permite passwords largos)
 
 assignment_title=Reubicar Módulos
 assignment_header=Asignación de categoría de módulo

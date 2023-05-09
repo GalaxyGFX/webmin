@@ -7,13 +7,13 @@ index_applydesc=انقر فوق هذا الزر لتنشيط تكوين جدار
 index_restart=تطبيق التكوين
 index_restartdesc=تنشيط جميع الخدمات والمنافذ المسموح بها المذكورة أعلاه في جميع المناطق. سيتم استبدال أي قواعد نشطة لم يتم إنشاؤها بشكل دائم.
 index_start=قم بتشغيل FirewallD
-index_startdesc=قم بتشغيل خادم FirewallD وتطبيق القواعد المذكورة أعلاه.
+index_startdesc=ابدأ تشغيل خادم FirewallD.
 index_stop=أوقف جدار الحماية
 index_stopdesc=أوقف تشغيل خادم FirewallD وأزل جميع القواعد المذكورة أعلاه.
 index_cerr=لا يمكن استخدام الوحدة النمطية لجدار الحماية :$1
 index_zone=إظهار القواعد في المنطقة:
 index_zoneok=يتغيرون
-index_zoneadd=إضافة منطقة ..
+index_zoneadd=أضف منطقة
 index_zonedel=حذف المنطقة
 index_zonedef=جعل الافتراضي
 index_type=نوع القاعدة
@@ -30,6 +30,14 @@ index_return=قائمة المناطق
 index_ezones=لم يتم العثور على مناطق جدار حماية!
 index_none=لا تحتوي هذه المنطقة على أي منافذ أو خدمات مسموح بها حتى الآن.
 index_ifaces=تطبيق القواعد على الواجهات:
+index_ifaces_def=جميع الواجهات
+index_ifaces_sel=واجهات مختارة:
+index_ifaces_apply=يتقدم
+index_listrules=سرد قواعد جدار الحماية
+index_restart_firewalld=إعادة تحميل جدار الحماية د
+index_restart_firewallddesc=أعد تحميل خادم FirewallD وقم بتطبيق القواعد التي تم إنشاؤها بشكل دائم.
+index_listrules_restartdesc=سرد تفاصيل حول قواعد جدار الحماية الغنية والمباشرة الموجودة في منطقة$1.
+index_dependent=فشل في إعادة تشغيل الخدمة التابعة$1
 
 port_edit=تحرير المنفذ
 port_create=إضافة منفذ
@@ -90,6 +98,22 @@ delzone_edefault=لا يمكن إزالة المنطقة الافتراضية
 delzone_rusure=هل تريد بالتأكيد حذف المنطقة$1 التي تحتوي على$2 منافذ وخدمات$3؟
 
 defzone_err=فشل في جعل المنطقة الافتراضية
+
+list_rule_iperr=عنوان إب غير صالح
+list_rule_actionerr=عمل غير صالح
+list_rules_title=قواعد جدار الحماية د
+list_rules_title_sub=في المنطقة$1
+list_rules_delete=حذف القواعد المحددة
+list_rules_type=يكتب
+list_rules_type_rich=ثري
+list_rules_type_direct=مباشر
+list_rules_protocol=بروتوكول
+list_rules_ip=IP
+list_rules_origin=أصل
+list_rules_action=عمل
+list_rules_rule=القاعدة
+list_rules_plus_more=+$1 آخرين
+log_save_rules=تم حذف$1 قواعد
 
 restart_err=فشل في تطبيق التكوين
 

@@ -19,11 +19,16 @@ if ($file =~ /\.(gif|jpg|jpeg|png)$/i) {
 }
 
 # read the help file
-$path = &help_file($module, $file);
-@st = stat($path);
-open(HELP, "<$path") || &helperror(&text('help_efile', $path));
-read(HELP, $help, $st[7]);
-close(HELP);
+$help = &read_help_file($module, $file);
+$help || &helperror(&text('help_efile3',
+		&html_escape($file), &html_escape($module)));
+
+# Modify help file based on module
+if (&foreign_exists($module) &&
+    &foreign_require($module) &&
+    &foreign_defined($module, 'help_pre_load')) {
+	$help = &foreign_call($module, "help_pre_load", $help);
+	}
 
 # find and replace the <header> section
 if ($help =~ s/<header>([^<]+)<\/header>//i) {
@@ -57,28 +62,22 @@ print $help;
 # inchelp(path)
 sub inchelp
 {
-if ($_[0] =~ /^\/(\S+)\/(\S+)$/) {
-	# including something from another module..
+my ($path) = @_;
+my $inc = &read_help_file($module, $path);
+if (!$inc) {
+	return "<i>".&text('help_einclude3', &html_escape($path))."</i><br>\n";
 	}
-else {
-	# including from this module
-	local $ipath = &help_file($module, $_[0]);
-	@st = stat($ipath);
-	open(INC, "<$ipath") ||
-		return "<i>".&text('help_einclude', $_[0])."</i><br>\n";
-	read(INC, $inc, $st[7]);
-	close(INC);
-	return $inc;
-	}
+return $inc;
 }
 
 # ifhelp(perl, text, [elsetext])
 sub ifhelp
 {
-local $rv = eval $_[0];
-if ($@) { return "<i>".&text('help_eif', $_[0], $@)."</i><br>\n"; }
-elsif ($rv) { return $_[1]; }
-else { return $_[2]; }
+my ($perl, $txt, $elsetxt) = @_;
+my $rv = eval $perl;
+if ($@) { return "<i>".&text('help_eif', $perl, $@)."</i><br>\n"; }
+elsif ($rv) { return $txt; }
+else { return $elsetxt; }
 }
 
 sub helperror

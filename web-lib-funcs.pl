@@ -15,6 +15,7 @@ Example code:
 ##use warnings;
 use Socket;
 use POSIX;
+use feature 'state';
 eval "use Socket6";
 $ipv6_module_error = $@;
 our $error_handler_funcs = [ ];
@@ -48,26 +49,27 @@ parameters are :
 =cut
 sub read_file
 {
+my ($file, $hash, $order, $lowercase, $split) = @_;
+$split = "=" if (!defined($split));
+my $realfile = &translate_filename($file);
+&open_readfile(ARFILE, $file) || return 0;
 local $_;
-my $split = defined($_[4]) ? $_[4] : "=";
-my $realfile = &translate_filename($_[0]);
-&open_readfile(ARFILE, $_[0]) || return 0;
 while(<ARFILE>) {
 	s/\r|\n//g;
-	my $hash = index($_, "#");
+	my $cmt = index($_, "#");
 	my $eq = index($_, $split);
-	if ($hash != 0 && $eq >= 0) {
+	if ($cmt != 0 && $eq >= 0) {
 		my $n = substr($_, 0, $eq);
 		my $v = substr($_, $eq+1);
 		chomp($v);
-		$_[1]->{$_[3] ? lc($n) : $n} = $v;
-		push(@{$_[2]}, $n) if ($_[2]);
+		$hash->{$lowercase ? lc($n) : $n} = $v;
+		push(@$order, $n) if ($order);
         	}
         }
 close(ARFILE);
 $main::read_file_missing{$realfile} = 0;	# It exists now
 if (defined($main::read_file_cache{$realfile})) {
-	%{$main::read_file_cache{$realfile}} = %{$_[1]};
+	%{$main::read_file_cache{$realfile}} = %$hash;
 	}
 return 1;
 }
@@ -139,7 +141,7 @@ Write out the contents of a hash as name=value lines. The parameters are :
 
 =item sort - If given, passed hash reference will be sorted by its keys
 
-=item sorted-by - If given, hash reference that is being saved will be sorted by the keys of sorted-by hashref
+=item sorted-by - If given, passed as full path to a file, will use its content to sort the keys
 
 =item sorted-by-sectioning-preserved - If sorted-by is used, then preserve the sectioning (line-breaks), and section comment as in hash reference
 
@@ -158,28 +160,31 @@ my $realfile = &translate_filename($file);
 &read_file($sorted_by || $file, \%old, \@order);
 &open_tempfile(ARFILE, ">$file");
 if ($sort || $gconfig{'sortconfigs'}) {
-    foreach $k (sort keys %{$data_hash}) {
-        (print ARFILE $k,$join,$data_hash->{$k},"\n") ||
-            &error(&text("efilewrite", $realfile, $!));
-        
-        }
-    }
+	# Always sort by keys
+	foreach $k (sort keys %{$data_hash}) {
+		(print ARFILE $k,$join,$data_hash->{$k},"\n") ||
+			&error(&text("efilewrite", $realfile, $!));
+		}
+	}
 else {
-    my %done;
-    foreach $k (@order) {
-        if (exists($data_hash->{$k}) && !$done{$k}++) {
-            (print ARFILE $k,$join,$data_hash->{$k},"\n") ||
-                &error(&text("efilewrite", $realfile, $!));
-            }
-        }
-    foreach $k (keys %{$data_hash}) {
-        if (!exists($old{$k}) && !$done{$k}++) {
-            (print ARFILE $k,$join,$data_hash->{$k},"\n") ||
-                &error(&text("efilewrite", $realfile, $!));
-            }
-        }
-    }
-&close_tempfile(ARFILE);
+	# Where possible, write out in the original order
+	my %done;
+	foreach $k (@order) {
+		if (exists($data_hash->{$k}) && !$done{$k}++) {
+			(print ARFILE $k,$join,$data_hash->{$k},"\n") ||
+				&error(&text("efilewrite", $realfile, $!));
+			}
+		}
+	foreach $k (keys %{$data_hash}) {
+		if (!exists($old{$k}) && !$done{$k}++) {
+			(print ARFILE $k,$join,$data_hash->{$k},"\n") ||
+				&error(&text("efilewrite", $realfile, $!));
+			}
+		}
+	}
+&close_tempfile(ARFILE, %{$data_hash} ? 1 : 0);
+
+# Update in-memory caches
 if (defined($main::read_file_cache{$realfile})) {
     %{$main::read_file_cache{$realfile}} = %{$data_hash};
     }
@@ -188,53 +193,53 @@ if (defined($main::read_file_missing{$realfile})) {
     }
 
 if ($sorted_by && $sorted_by_sectioning_preserved) {
-    my $target = read_file_contents($file);
-    my $model = read_file_contents($sorted_by);
+	my $target = read_file_contents($file);
+	my $model = read_file_contents($sorted_by);
 
-    # Extract version related comments for a block, e.g. #1.962
-    my %comments = reverse ($model =~ m/(#\s*[\d\.]+)[\n\s]+(.*?)=/gm);
+	# Extract version related comments for a block, e.g. #1.962
+	my %comments = reverse ($model =~ m/(#\s*[\d\.]+)[\n\s]+(.*?)=/gm);
 
-    # Build blocks of line's key separated with a new line break
-    my @lines = (($model =~ m/(.*?)$join|(^\s*$)/gm), undef, undef);
-    my @blocks;
-    my @block;
-    for (my $line = 0; $line < scalar(@lines) - 1; $line += 2) {
-        if ($lines[$line] =~ /\S+/) {
-            push(@block, $lines[$line]);
-            }
-        else {
-            push(@blocks, [@block]);
-            @block = ();
-            }
-        }
-    for (my $block = 0; $block <= scalar(@blocks) - 1; $block++) {
-        foreach my $line (@{$blocks[$block]}) {
-            # Add a comment to the first block element
-            if ($target =~ /(\Q$line\E)=(.*)/) {
-                foreach my $comment (keys %comments) {
-                    if (grep(/^\Q$comment\E$/, @{$blocks[$block]})) {
-                        $target =~ s/(\Q$line\E)=(.*)/$comments{$comment}\n$1=$2/;
-                        last;
-                        }
-                    }
-                last;
-                }
-            }
-        foreach my $line (reverse @{$blocks[$block]}) {
-            if (
-                # Go to another block immediately
-                # if new line already exists
-                $target =~ /(\Q$line\E)$join.*?(\r?\n|\r\n?)+$/m ||
+	# Build blocks of line's key separated with a new line break
+	my @lines = (($model =~ m/(.*?)$join|(^\s*$)/gm), undef, undef);
+	my @blocks;
+	my @block;
+	for (my $line = 0; $line < scalar(@lines) - 1; $line += 2) {
+		if ($lines[$line] =~ /\S+/) {
+			push(@block, $lines[$line]);
+			}
+		else {
+			push(@blocks, [@block]);
+			@block = ();
+			}
+		}
+	for (my $block = 0; $block <= scalar(@blocks) - 1; $block++) {
+		foreach my $line (@{$blocks[$block]}) {
+			# Add a comment to the first block element
+			if ($target =~ /(\Q$line\E)=(.*)/) {
+				foreach my $comment (keys %comments) {
+					if (grep(/^\Q$comment\E$/, @{$blocks[$block]})) {
+						$target =~ s/(\Q$line\E)=(.*)/$comments{$comment}\n$1=$2/;
+						last;
+					}
+				}
+			last;
+			}
+		}
+		foreach my $line (reverse @{$blocks[$block]}) {
+			if (
+			    # Go to another block immediately
+			    # if new line already exists
+			    $target =~ /(\Q$line\E)$join.*?(\r?\n|\r\n?)+$/m ||
 
-                # Add new line to the last element of
-                # the block and go to another block
-                $target =~ s/(\Q$line\E)$join(.*)/$1=$2\n/) {
-                last;
-                }
-            }
-        }
-    write_file_contents($file, $target);
-    }
+			    # Add new line to the last element of
+			    # the block and go to another block
+			    $target =~ s/(\Q$line\E)$join(.*)/$1=$2\n/) {
+				last;
+				}
+			}
+		}
+		&write_file_contents($file, $target);
+	}
 }
 
 =head2 html_escape(string)
@@ -255,6 +260,9 @@ $tmp =~ s/>/&gt;/g;
 $tmp =~ s/\"/&quot;/g;
 $tmp =~ s/\'/&#39;/g;
 $tmp =~ s/=/&#61;/g;
+# Never escape spaces
+$tmp =~ s/&amp;#x20;/&#x20;/g;
+$tmp =~ s/&amp;nbsp;/&nbsp;/g;
 return $tmp;
 }
 
@@ -274,7 +282,7 @@ return $str;
 =head2 quote_escape(string, [only-quote])
 
 Converts ' and " characters in a string into HTML entities, and returns it.
-Useful for outputing HTML tag values.
+Useful for outputting HTML tag values.
 
 =cut
 sub quote_escape
@@ -319,7 +327,8 @@ my $tmp_base = $gconfig{'tempdir_'.&get_module_name()} ?
 		  $ENV{'TMP'} && $ENV{'TMP'} ne "/tmp" ? $ENV{'TMP'} :
 		  -d "c:/temp" ? "c:/temp" : "/tmp/.webmin";
 my $tmp_dir;
-if (-d $remote_user_info[7] && !$gconfig{'nohometemp'}) {
+if (@remote_user_info && -d $remote_user_info[7] &&
+    -w $remote_user_info[7] && !$gconfig{'nohometemp'}) {
 	$tmp_dir = "$remote_user_info[7]/.tmp";
 	}
 elsif (@remote_user_info) {
@@ -360,23 +369,28 @@ if ($gconfig{'os_type'} eq 'windows' || $tmp_dir =~ /^[a-z]:/i) {
 	}
 else {
 	# On Unix systems, need to make sure temp dir is valid
-	my $tries = 0;
-	my $mkdirerr;
-	while($tries++ < 10) {
-		my @st = lstat($tmp_dir);
-		last if ($st[4] == $< && (-d _) && ($st[2] & 0777) == 0755);
-		if (@st) {
-			unlink($tmp_dir) || rmdir($tmp_dir) ||
-				system("/bin/rm -rf ".quotemeta($tmp_dir));
+	if ($tmp_dir ne "/tmp") {
+		my $tries = 0;
+		my $mkdirerr;
+		while($tries++ < 10) {
+			my @st = lstat($tmp_dir);
+			last if ($st[4] == $< && (-d _) &&
+				 ($st[2] & 0777) == 0755);
+			if (@st) {
+				unlink($tmp_dir) || rmdir($tmp_dir) ||
+					system("/bin/rm -rf ".
+					       quotemeta($tmp_dir));
+				}
+			mkdir($tmp_dir, 0755) || (($mkdirerr = $!), next);
+			chown($<, $(, $tmp_dir);
+			chmod(0755, $tmp_dir);
 			}
-		mkdir($tmp_dir, 0755) || (($mkdirerr = $!), next);
-		chown($<, $(, $tmp_dir);
-		chmod(0755, $tmp_dir);
-		}
-	if ($tries >= 10) {
-		my @st = lstat($tmp_dir);
-		$mkdirerr = $mkdirerr ? " : $mkdirerr" : "";
-		&error("Failed to create temp directory $tmp_dir$mkdirerr");
+		if ($tries >= 10) {
+			my @st = lstat($tmp_dir);
+			$mkdirerr = $mkdirerr ? " : $mkdirerr" : "";
+			&error("Failed to create temp directory ".
+			       $tmp_dir.$mkdirerr);
+			}
 		}
 	# If running as root, check parent dir (usually /tmp) to make sure it's
 	# world-writable and owned by root
@@ -419,7 +433,7 @@ return $rv;
 
 Behaves exactly like transname, but returns a filename with current timestamp
 
-=item filename - Optional filename prefix to preppend
+=item filename - Optional filename prefix to prepend
 
 =item extension - Optional extension for a filename to append
 
@@ -913,7 +927,8 @@ if (!$main::read_parse_mime_callback_flushed) {
 my $upfile = "$vardir/upload.$id";
 if ($totalsize && $size >= 0) {
 	my $pc = int(100 * $size / $totalsize);
-	if ($pc <= $main::read_parse_mime_callback_pc{$upfile}) {
+	if (defined($main::read_parse_mime_callback_pc{$upfile}) &&
+	    $pc <= $main::read_parse_mime_callback_pc{$upfile}) {
 		return;
 		}
 	$main::read_parse_mime_callback_pc{$upfile} = $pc;
@@ -958,6 +973,12 @@ sub PrintHeader
 {
 my ($cs, $mt) = @_;
 $mt ||= "text/html";
+if ($ENV{'SSL_HSTS'} == 1 && uc($ENV{'HTTPS'}) eq "ON") {
+	print "Strict-Transport-Security: max-age=31536000;\n";
+	}
+elsif (uc($ENV{'HTTPS'}) ne "ON") {
+	print "Strict-Transport-Security: max-age=0;\n";
+	}
 if ($pragma_no_cache || $gconfig{'pragma_no_cache'}) {
 	print "pragma: no-cache\n";
 	print "Expires: Thu, 1 Jan 1970 00:00:00 GMT\n";
@@ -1635,7 +1656,7 @@ by the message setup using that function.
 sub error
 {
 $main::no_miniserv_userdb = 1;
-return if $main::ignore_errors;
+&setvar('error-fatal', 1);
 my $msg = join("", @_);
 $msg =~ s/<[^>]*>//g;
 my $error_details = (($ENV{'WEBMIN_DEBUG'} || $gconfig{'debug_enabled'}) ? "" : "\n");
@@ -1951,33 +1972,159 @@ $main::has_command_cache{$_[0]} = $rv;
 return $rv;
 }
 
-=head2 make_date(seconds, [date-only], [fmt])
+=head2 make_date(seconds, [date-only-or-opts], [fmt])
 
 Converts a Unix date/time in seconds to a human-readable form, by default
 formatted like dd/mmm/yyyy hh:mm:ss. Parameters are :
 
 =item seconds - Unix time is seconds to convert.
 
-=item date-only - If set to 1, exclude the time from the returned string.
+=item date-only-or-opts - If set to 1, exclude the time from the returned string.
+
+In case this param is a hash reference use it for options in a new DateTime::Locale
+code or preserve the original, old logic
 
 =item fmt - Optional, one of dd/mon/yyyy, dd/mm/yyyy, mm/dd/yyyy or yyyy/mm/dd
 
 =cut
 sub make_date
 {
-&load_theme_library();
-if (defined(&theme_make_date) &&
-    !$main::theme_prevent_make_date && 
-    (($main::header_content_type eq "text/html" &&
-    $main::webmin_script_type eq "web") || 
-    $main::theme_allow_make_date)) {
-	return &theme_make_date(@_);
-	}
 my ($secs, $only, $fmt) = @_;
+$secs ||= 0;
+eval "use DateTime; use DateTime::Locale; use DateTime::TimeZone;";
+if (!$@) {
+	my $opts = ref($only) ? $only : {};
+	my $locale_default = &get_default_system_locale();
+	my $locale_auto = &parse_accepted_language();
+	my $locale_name = $opts->{'locale'} || $gconfig{'locale_'.$remote_user} ||
+	   $locale_auto || $gconfig{'locale'} || &get_default_system_locale();
+	my $tz = $opts->{'tz'};
+	if (!$tz) {
+		eval {
+			$tz =
+			  DateTime::TimeZone->new(name => strftime("%z", localtime()))->name(); # +0200
+			};
+		if ($@) {
+			eval {
+				$tz = DateTime::TimeZone->new(name => 'local')->name();  # Asia/Nicosia
+				};
+			if ($@) {
+				$tz = DateTime::TimeZone->new(name => 'UTC')->name();    # UTC
+				}
+			}
+		}
+	my $locale = DateTime::Locale->load($locale_name);
+	my $locale_format_full_tz = $locale->glibc_date_1_format;    # Sat 20 Nov 2286 17:46:39 UTC
+	my $locale_format_full = $locale->glibc_datetime_format;     # Sat 20 Nov 2286 17:46:39
+	my $locale_format_short = $locale->glibc_date_format;        # 20/11/86
+	my $locale_format_time = $locale->glibc_time_format;         # 17:46:39
+	my $locale_format_delimiter = "/";
+	if ($opts->{'delimiter'}) {
+		$locale_format_delimiter = $opts->{'delimiter'};
+		}
+	elsif ($locale_format_short =~ /\%.*?\[a-zA-Z]\s*(?<delimiter>.)/) {
+		$locale_format_delimiter = "$+{delimiter}";
+		}
+
+	# Return fully detailed object
+	if (%{$opts}) {
+		# Can we get ago time
+		my $ago;
+		my $ago_secs = time() - $secs;
+		eval "use Time::Seconds";
+		if (!$@ && $ago_secs) {
+			my $ago_obj = Time::Seconds->new($ago_secs);
+			$ago = {
+				"seconds" => int($ago_obj->seconds),
+				"minutes" =>  int($ago_obj->minutes),
+				"hours" => int($ago_obj->hours),
+				"days" => int($ago_obj->days),
+				"weeks" => int($ago_obj->weeks),
+				"months"  => int($ago_obj->months),
+				"years" => int($ago_obj->years),
+				"pretty" => $ago_obj->pretty
+			};
+		}
+		# my $xxxx = $locale->full_date_format;
+		my $data = {
+			# Wed Feb 8 05:09:39 PM UTC 2023
+			'full-tz-utc' => DateTime->from_epoch(locale => $locale_name, epoch => $secs)->strftime($locale_format_full_tz),
+			# Wed Feb 8 07:10:01 PM EET 2023 
+			'full-tz' => DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_full_tz),
+			# Wed 08 Feb 2023 07:11:26 PM EET
+			'full' => DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_full),
+			# 02/08/2023
+			'short' => DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_short),
+			# 07:12:07 PM
+			'time' => DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_time),
+			'ago' => $ago,
+			'tz' => $tz,
+			'delimiter' => $locale_format_delimiter,
+			'timestamp' => $secs,
+			'_locale' => $opts->{'getFull'} ? $locale : undef,
+			};
+		# Add time short, e.g. 17:46 or 5:46 PM
+		$data->{'timeshort'} = $data->{'time'};
+		$data->{'timeshort'} =~ s/(\d+):(\d+):(\d+)(.*?)/$1:$2$4/;
+
+		# %c alternative with full week and month and no seconds in time (complete)
+		# Wednesday, February 8, 2023, 8:18 PM or 星期三, 2023年2月8日 20:18 or miércoles, 8 febrero 2023, 20:28
+		$data->{'monthfull'} = DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime("%B");
+		foreach (split(/\s+/, DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime("%A, %c"))) {
+			if ($data->{'monthfull'} =~ /^$_/) {
+				$data->{'complete'} .= "$data->{'monthfull'} "
+				}
+			else {
+				$data->{'complete'} .= "$_ "
+				}
+			};
+		$data->{'complete'} =~ s/(\d+):(\d+):(\d+)(.*?)/$1:$2$4/;
+
+		if ($opts->{'get'}) {
+			return $data->{$opts->{'get'}};
+			}
+		return $data;
+		}
+
+	# Support old style to force date format
+	my $timeshort = length($fmt) == 3 ? 1 : 0;
+	if ($fmt) {
+		my $date = $fmt;
+		my @date;
+		$date[$-[1]] = '%m'
+		    if ($date =~ /(m|M)/);
+		$date[$-[1]] = '%d'
+		    if ($date =~ /(d|D)/);
+		if ($date =~ /(yyyy)/i ||
+		   ($date =~ /(y|Y)/ && $timeshort)) {
+		    $date[$-[1]] = '%Y'
+		    }
+		elsif ($date =~ /(y|Y)/) {
+		    $date[$-[1]] = '%y'
+		    }
+		@date = grep { /\%/ } @date;
+		$locale_format_short = join($locale_format_delimiter, @date);
+		}
+	my $date_format_short = DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_short);
+	if (!ref($only) && $only) {
+		return $date_format_short;
+		}
+	else {
+		my $date_format_time = DateTime->from_epoch(locale => $locale_name, epoch => $secs, time_zone => $tz)->strftime($locale_format_time);
+		$date_format_time = $date_format_time;
+		$date_format_time =~ s/(\d+):(\d+):(\d+)(.*?)/$1:$2$4/;
+		if ($main::webmin_script_type eq 'web') {
+			$date_format_time =~ s/\s/&nbsp;/g;
+			}
+		return "$date_format_short $date_format_time";
+		}
+	}
+
+# Fall back to built-in formatting
 my @tm = localtime($secs);
 my $date;
 if (!$fmt) {
-	$fmt = $gconfig{'dateformat'} || 'dd/mon/yyyy';
+	$fmt = $gconfig{'dateformat_'.$remote_user} || $gconfig{'dateformat'} || 'dd/mon/yyyy';
 	}
 if ($fmt eq 'dd/mon/yyyy') {
 	$date = sprintf "%2.2d/%s/%4.4d",
@@ -2002,7 +2149,7 @@ elsif ($fmt eq 'dd.mm.yyyy') {
 elsif ($fmt eq 'yyyy-mm-dd') {
 	$date = sprintf "%4.4d-%2.2d-%2.2d", $tm[5]+1900, $tm[4]+1, $tm[3];
 	}
-if (!$only) {
+if (ref($only) || !$only) {
 	$date .= sprintf " %2.2d:%2.2d", $tm[2], $tm[1];
 	}
 return $date;
@@ -2274,7 +2421,7 @@ hash reference.
 =cut
 sub get_miniserv_config
 {
-return &read_file_cached(&get_miniserv_config_file(), $_[0]);
+return &read_file_cached_with_stat(&get_miniserv_config_file(), $_[0]);
 }
 
 =head2 put_miniserv_config(&hash)
@@ -2302,8 +2449,8 @@ it to restart. This will apply all configuration settings.
 =cut
 sub restart_miniserv
 {
-my ($nowait, $ignore) = @_;
 return undef if (&is_readonly_mode());
+my ($nowait, $ignore) = @_;
 my %miniserv;
 &get_miniserv_config(\%miniserv) || return;
 if ($main::webmin_script_type eq 'web' && !$ENV{"MINISERV_CONFIG"} &&
@@ -2391,8 +2538,8 @@ IP addresses and ports to accept connections on.
 =cut
 sub reload_miniserv
 {
-my ($ignore) = @_;
 return undef if (&is_readonly_mode());
+my ($ignore) = @_;
 my %miniserv;
 &get_miniserv_config(\%miniserv) || return;
 if ($main::webmin_script_type eq 'web' && !$ENV{"MINISERV_CONFIG"} &&
@@ -3530,22 +3677,22 @@ if (!$file) {
 	}
 my $realfile = &translate_filename($file);
 if (!$main::file_cache{$realfile}) {
-        my (@lines, $eol);
+	my (@lines, $eol);
 	local $_;
 	&webmin_debug_log('READ', $file) if ($gconfig{'debug_what_read'});
-        open(READFILE, "<".$realfile);
-        while(<READFILE>) {
+	open(READFILE, "<".$realfile);
+	while(<READFILE>) {
 		if (!$eol) {
 			$eol = /\r\n$/ ? "\r\n" : "\n";
 			}
-                tr/\r\n//d;
-                push(@lines, $_);
-                }
-        close(READFILE);
-        $main::file_cache{$realfile} = \@lines;
+		tr/\r\n//d;
+		push(@lines, $_);
+		}
+	close(READFILE);
+	$main::file_cache{$realfile} = \@lines;
 	$main::file_cache_noflush{$realfile} = $readonly;
 	$main::file_cache_eol{$realfile} = $eol || "\n";
-        }
+	}
 else {
 	# Make read-write if currently readonly
 	if (!$readonly) {
@@ -3701,7 +3848,7 @@ if ($_[1] && $gconfig{'db_sizeusers'}) {
 elsif (!$_[1] && $gconfig{'db_sizeuser'}) {
 	($w, $h) = split(/x/, $gconfig{'db_sizeuser'});
 	}
-return "<input type=button onClick='ifield = form.$_[0]; chooser = window.open(\"@{[&get_webprefix()]}/user_chooser.cgi?multi=$_[1]&user=\"+escape(ifield.value), \"chooser\", \"toolbar=no,menubar=no,scrollbars=yes,resizable=yes,width=$w,height=$h\"); chooser.ifield = ifield; window.ifield = ifield' value=\"...\">\n";
+return "<button type=\"button\" onClick='ifield = form.$_[0]; chooser = window.open(\"@{[&get_webprefix()]}/user_chooser.cgi?multi=$_[1]&user=\"+escape(ifield.value), \"chooser\", \"toolbar=no,menubar=no,scrollbars=yes,resizable=yes,width=$w,height=$h\"); chooser.ifield = ifield; window.ifield = ifield'>...</button>\n";
 }
 
 =head2 group_chooser_button(field, multiple, [form])
@@ -3730,7 +3877,7 @@ if ($_[1] && $gconfig{'db_sizeusers'}) {
 elsif (!$_[1] && $gconfig{'db_sizeuser'}) {
 	($w, $h) = split(/x/, $gconfig{'db_sizeuser'});
 	}
-return "<input type=button onClick='ifield = form.$_[0]; chooser = window.open(\"@{[&get_webprefix()]}/group_chooser.cgi?multi=$_[1]&group=\"+escape(ifield.value), \"chooser\", \"toolbar=no,menubar=no,scrollbars=yes,resizable=yes,width=$w,height=$h\"); chooser.ifield = ifield; window.ifield = ifield' value=\"...\">\n";
+return "<button type=\"button\" onClick='ifield = form.$_[0]; chooser = window.open(\"@{[&get_webprefix()]}/group_chooser.cgi?multi=$_[1]&group=\"+escape(ifield.value), \"chooser\", \"toolbar=no,menubar=no,scrollbars=yes,resizable=yes,width=$w,height=$h\"); chooser.ifield = ifield; window.ifield = ifield'>...</button>\n";
 }
 
 =head2 foreign_check(module, [api-only])
@@ -3764,28 +3911,9 @@ my $mdir = &module_root_directory($_[0]);
 return -r "$mdir/module.info";
 }
 
-=head2 foreign_func_exists(module, func)
-
-Checks if module exists and if the 
-given module's function is defined
-
-=cut
-sub foreign_func_exists
-{
-my ($mod, $func) = @_;
-if (&foreign_exists($mod)) {
-	$mod =~ s/-/_/g;
-	$func = "${mod}::${func}";
-	if (defined(&$func)) {
-		return 1;
-		}
-	}
-return 0;
-}
-
 =head2 foreign_available(module)
 
-Returns 1 if some module is installed, and acessible to the current user. The
+Returns 1 if some module is installed, and accessible to the current user. The
 module parameter is the module directory name.
 
 =cut
@@ -4013,9 +4141,9 @@ simpler to use the syntax &defined(module::function) instead.
 =cut
 sub foreign_defined
 {
-my ($pkg) = @_;
+my ($pkg, $sub) = @_;
 $pkg =~ s/[^A-Za-z0-9]/_/g;
-my $func = "${pkg}::$_[1]";
+my $func = "${pkg}::${sub}";
 return defined(&$func);
 }
 
@@ -4072,6 +4200,10 @@ if (!$main::get_system_hostname[$m]) {
 				$fromfile = $hn;
 				}
 			}
+		if ($hn =~ /localhost/) {
+			# Not likely to be valid
+			$hn = $fromfile = undef;
+			}
 
 		# Append domain name from DNS config if needed
 		if ($fromfile && $fromfile !~ /\./) {
@@ -4081,6 +4213,23 @@ if (!$main::get_system_hostname[$m]) {
 				    $2 ne "invalid") {
 					$dname = $2;
 					last;
+					}
+				}
+			$fromfile .= ".".$dname if ($dname);
+			}
+
+		# Append domain name from /etc/hosts if needed
+		if ($fromfile && $fromfile !~ /\./) {
+			my $lref = &read_file_lines("/etc/hosts", 1);
+			HOST: foreach my $l (@$lref) {
+				next if ($l =~ /^\s*#/);
+				my ($ip, @names) = split(/\s+/, $l);
+				next if (&indexof($fromfile, @names) < 0);
+				foreach my $n (@names) {
+					if ($n =~ /^\Q$fromfile\E\.(.*)/) {
+						$dname = $2;
+						last HOST;
+						}
 					}
 				}
 			$fromfile .= ".".$dname if ($dname);
@@ -4116,17 +4265,7 @@ if (!$main::get_system_hostname[$m]) {
 			my $ex = &execute_command("hostname -f", undef, \$flag,
 						  undef, 0, 1);
 			chop($flag);
-			if ($ex || $flag eq "") {
-				# -f not supported! We have probably set the
-				# hostname to just '-f'. Fix the problem
-				# (if we are root)
-				if ($< == 0) {
-					&execute_command("hostname ".
-						quotemeta($main::get_system_hostname[$m]),
-						undef, undef, undef, 0, 1);
-					}
-				}
-			else {
+			if (!$ex && $flag ne "") {
 				$main::get_system_hostname[$m] = $flag;
 				}
 			}
@@ -4156,7 +4295,6 @@ Returns the version of Webmin currently being run, such as 1.450.
 =cut
 sub get_webmin_version
 {
-my ($ui_format_dev) = @_;
 if (!$get_webmin_version) {
 	$get_webmin_version = &read_file_contents("$root_directory/version");
 	$get_webmin_version =~ s/\r|\n//g;
@@ -4178,6 +4316,18 @@ if (!defined($get_webmin_version_release)) {
 	$get_webmin_version_release =~ s/\r|\n//g;
 	}
 return $get_webmin_version_release;
+}
+
+=head2 get_webmin_full_version
+
+Returns the full version of Webmin currently being run, such as 1.450-3
+
+=cut
+sub get_webmin_full_version
+{
+my $ver = &get_webmin_version();
+my $rel = &get_webmin_version_release();
+return $ver.($rel ? "-".$rel : "");
 }
 
 =head2 get_module_acl([user], [module], [no-rbac], [no-default])
@@ -4321,7 +4471,11 @@ if (defined(&theme_get_module_acl)) {
 # only, we must not consider `noconfig` option at all.
 my $allowed = &get_module_preferences_acl($m, 'allowed');
 if ($allowed && $allowed eq "*") {
-	$rv{'noconfig'} = 0;
+
+	# This option has to be deleted completely, as some callers, like
+	# acl/save_user.cgi expects it to be empty, on safe user creation
+	delete $rv{'noconfig'}
+		if (defined($rv{'noconfig'}));
 	}
 return %rv;
 }
@@ -4814,6 +4968,9 @@ $config_file = "$config_directory/config";
 %gconfig = ( );
 &read_file_cached($config_file, \%gconfig);
 $gconfig{'webprefix'} = '' if (!exists($gconfig{'webprefix'}));
+if (!$gconfig{'webprefix'} && $gconfig{'webprefix_remote'}) {
+	$gconfig{'webprefix'} = $ENV{'HTTP_X_WEBMIN_WEBPREFIX'};
+	}
 $null_file = $gconfig{'os_type'} eq 'windows' ? "NUL" : "/dev/null";
 $path_separator = $gconfig{'os_type'} eq 'windows' ? ';' : ':';
 
@@ -4874,6 +5031,8 @@ if ($gconfig{'path'}) {
 	$ENV{'PATH'} = join($path_separator,
 			&unique(split($path_separator, $ENV{'PATH'})));
 	}
+$ENV{'PATH'} ||= join($path_separator, "/usr/local/sbin", "/usr/local/bin",
+		      "/usr/sbin", "/usr/bin", "/sbin", "/bin");
 $ENV{$gconfig{'ld_env'}} = $gconfig{'ld_path'} if ($gconfig{'ld_env'});
 
 # Set http_proxy and ftp_proxy environment variables, based on Webmin settings
@@ -5106,22 +5265,13 @@ $webmin_logfile = $gconfig{'webmin_log'} ? $gconfig{'webmin_log'}
 
 # Load language strings into %text
 my @langs = &list_languages();
-my $accepted_lang;
-if ($gconfig{'acceptlang'}) {
-	foreach my $a (split(/,/, $ENV{'HTTP_ACCEPT_LANGUAGE'})) {
-		$a =~ s/;.*//;	# Remove ;q=0.5 or similar
-		my ($al) = grep { $_->{'lang'} eq $a } @langs;
-		if ($al) {
-			$accepted_lang = $al->{'lang'};
-			last;
-			}
-		}
-	}
+my $accepted_lang = &parse_accepted_language();
+
 $current_lang = safe_language($force_lang ? $force_lang :
-    $accepted_lang ? $accepted_lang :
     $remote_user_attrs{'lang'} ? $remote_user_attrs{'lang'} :
     $gconfig{"lang_$remote_user"} ? $gconfig{"lang_$remote_user"} :
     $gconfig{"lang_$base_remote_user"} ? $gconfig{"lang_$base_remote_user"} :
+    $accepted_lang ? $accepted_lang :
     $gconfig{"lang"} ? $gconfig{"lang"} : $default_lang);
 foreach my $l (@langs) {
 	$current_lang_info = $l if ($l->{'lang'} eq $current_lang);
@@ -5141,7 +5291,8 @@ if ($module_name) {
 	}
 
 if ($module_name && !$main::no_acl_check &&
-    !defined($ENV{'FOREIGN_MODULE_NAME'}) &&
+    (!defined($ENV{'FOREIGN_MODULE_NAME'}) ||
+      defined($ENV{'FOREIGN_MODULE_SEC_CHECK'})) &&
     $main::webmin_script_type eq 'web') {
 	# Check if the HTTP user can access this module
 	if (!&foreign_available($module_name)) {
@@ -5275,15 +5426,18 @@ if ($ENV{'HTTP_X_REQUESTED_WITH'} ne "XMLHttpRequest" &&
         $var{$key} = $url;
         
         # Store unique file name
-        my $url_to_filename = &encode_base64(($url . time()), 'noeol');
-        $url_to_filename =~ s/[^A-Za-z0-9\-_]//g;
-        $url_to_filename = substr($url_to_filename, -128)
-            if (length($url_to_filename) > 128);
+        my $url_to_filename = $url;
+        $url_to_filename =~ s/cgi//g;
+        $url_to_filename =~ s/[^A-Za-z0-9]//g;
+        $url_to_filename = time() . &encode_base64($url_to_filename, 'noeol');
+        $url_to_filename =~ s/[^A-Za-z0-9]//g;
+        $url_to_filename = substr($url_to_filename, 0, 128);
 
         # Write URL for the theme to read and open
-        $main::ignore_errors = 1;
-        &write_file(&tempname('.theme_' . $salt . '_' . $url_to_filename . '_' . get_product_name() . '_' . $key . '_' . $remote_user), \%var);
-        $main::ignore_errors = 0;
+        eval {
+            $main::error_must_die = 1;
+	        &write_file(&tempname('.theme_' . $salt . '_' . $url_to_filename . '_' . get_product_name() . '_' . $key . '_' . $remote_user), \%var);
+        	};
         }
     &redirect("/");
 	}
@@ -5600,7 +5754,7 @@ return $_;
 
 =head2 get_module_info(module, [noclone], [forcache])
 
-Returns a hash containg details of the given module. Some useful keys are :
+Returns a hash containing details of the given module. Some useful keys are :
 
 =item dir - The module directory, like sendmail.
 
@@ -5846,6 +6000,352 @@ foreach my $o (@lang_order_list) {
 	}
 $rv{"dir"} = $_[0];
 return %rv;
+}
+
+=head2 list_locales()
+
+# Returns the list of supported locales
+
+=cut
+sub list_locales
+{
+return { 'af'             => 'Afrikaans',
+         'af-NA'          => 'Afrikaans (Namibië)',
+         'af-ZA'          => 'Afrikaans (Suid-Afrika)',
+         'ar'             => 'العربية',
+         'ar-AE'          => 'العربية (الإمارات العربية المتحدة)',
+         'ar-BH'          => 'العربية (البحرين)',
+         'ar-DJ'          => 'العربية (جيبوتي)',
+         'ar-DZ'          => 'العربية (الجزائر)',
+         'ar-EG'          => 'العربية (مصر)',
+         'ar-EH'          => 'العربية (الصحراء الغربية)',
+         'ar-ER'          => 'العربية (إريتريا)',
+         'ar-IL'          => 'العربية (إسرائيل)',
+         'ar-IQ'          => 'العربية (العراق)',
+         'ar-JO'          => 'العربية (الأردن)',
+         'ar-KM'          => 'العربية (جزر القمر)',
+         'ar-KW'          => 'العربية (الكويت)',
+         'ar-LB'          => 'العربية (لبنان)',
+         'ar-LY'          => 'العربية (ليبيا)',
+         'ar-MA'          => 'العربية (المغرب)',
+         'ar-MR'          => 'العربية (موريتانيا)',
+         'ar-OM'          => 'العربية (عُمان)',
+         'ar-PS'          => 'العربية (الأراضي الفلسطينية)',
+         'ar-QA'          => 'العربية (قطر)',
+         'ar-SA'          => 'العربية (المملكة العربية السعودية)',
+         'ar-SD'          => 'العربية (السودان)',
+         'ar-SO'          => 'العربية (الصومال)',
+         'ar-SS'          => 'العربية (جنوب السودان)',
+         'ar-SY'          => 'العربية (سوريا)',
+         'ar-TD'          => 'العربية (تشاد)',
+         'ar-TN'          => 'العربية (تونس)',
+         'ar-YE'          => 'العربية (اليمن)',
+         'be'             => 'беларуская',
+         'be-BY'          => 'беларуская (Беларусь)',
+         'be-tarask'      => 'беларуская (TARASK)',
+         'bg'             => 'български',
+         'bg-BG'          => 'български (България)',
+         'ca'             => 'català',
+         'ca-AD'          => 'català (Andorra)',
+         'ca-ES'          => 'català (Espanya)',
+         'ca-ES-valencia' => 'català (Espanya valencià)',
+         'ca-FR'          => 'català (França)',
+         'ca-IT'          => 'català (Itàlia)',
+         'cs'             => 'čeština',
+         'cs-CZ'          => 'čeština (Česko)',
+         'da'             => 'dansk',
+         'da-DK'          => 'dansk (Danmark)',
+         'da-GL'          => 'dansk (Grønland)',
+         'de'             => 'Deutsch',
+         'de-AT'          => 'Deutsch (Österreich)',
+         'de-BE'          => 'Deutsch (Belgien)',
+         'de-CH'          => 'Deutsch (Schweiz)',
+         'de-DE'          => 'Deutsch (Deutschland)',
+         'de-IT'          => 'Deutsch (Italien)',
+         'de-LI'          => 'Deutsch (Liechtenstein)',
+         'de-LU'          => 'Deutsch (Luxemburg)',
+         'el'             => 'Ελληνικά',
+         'el-CY'          => 'Ελληνικά (Κύπρος)',
+         'el-GR'          => 'Ελληνικά (Ελλάδα)',
+         'en'             => 'English',
+         'en-AE'          => 'English (United Arab Emirates)',
+         'en-AG'          => 'English (Antigua & Barbuda)',
+         'en-AI'          => 'English (Anguilla)',
+         'en-AS'          => 'English (American Samoa)',
+         'en-AT'          => 'English (Austria)',
+         'en-AU'          => 'English (Australia)',
+         'en-BB'          => 'English (Barbados)',
+         'en-BE'          => 'English (Belgium)',
+         'en-BI'          => 'English (Burundi)',
+         'en-BM'          => 'English (Bermuda)',
+         'en-BS'          => 'English (Bahamas)',
+         'en-BW'          => 'English (Botswana)',
+         'en-BZ'          => 'English (Belize)',
+         'en-CA'          => 'English (Canada)',
+         'en-CC'          => 'English (Cocos (Keeling) Islands)',
+         'en-CH'          => 'English (Switzerland)',
+         'en-CK'          => 'English (Cook Islands)',
+         'en-CM'          => 'English (Cameroon)',
+         'en-CX'          => 'English (Christmas Island)',
+         'en-CY'          => 'English (Cyprus)',
+         'en-DE'          => 'English (Germany)',
+         'en-DG'          => 'English (Diego Garcia)',
+         'en-DK'          => 'English (Denmark)',
+         'en-DM'          => 'English (Dominica)',
+         'en-ER'          => 'English (Eritrea)',
+         'en-FI'          => 'English (Finland)',
+         'en-FJ'          => 'English (Fiji)',
+         'en-FK'          => 'English (Falkland Islands)',
+         'en-FM'          => 'English (Micronesia)',
+         'en-GB'          => 'English (United Kingdom)',
+         'en-GD'          => 'English (Grenada)',
+         'en-GG'          => 'English (Guernsey)',
+         'en-GH'          => 'English (Ghana)',
+         'en-GI'          => 'English (Gibraltar)',
+         'en-GM'          => 'English (Gambia)',
+         'en-GU'          => 'English (Guam)',
+         'en-GY'          => 'English (Guyana)',
+         'en-HK'          => 'English (Hong Kong SAR China)',
+         'en-IE'          => 'English (Ireland)',
+         'en-IL'          => 'English (Israel)',
+         'en-IM'          => 'English (Isle of Man)',
+         'en-IN'          => 'English (India)',
+         'en-IO'          => 'English (British Indian Ocean Territory)',
+         'en-JE'          => 'English (Jersey)',
+         'en-JM'          => 'English (Jamaica)',
+         'en-KE'          => 'English (Kenya)',
+         'en-KI'          => 'English (Kiribati)',
+         'en-KN'          => 'English (St Kitts & Nevis)',
+         'en-KY'          => 'English (Cayman Islands)',
+         'en-LC'          => 'English (St Lucia)',
+         'en-LR'          => 'English (Liberia)',
+         'en-LS'          => 'English (Lesotho)',
+         'en-MG'          => 'English (Madagascar)',
+         'en-MH'          => 'English (Marshall Islands)',
+         'en-MO'          => 'English (Macao SAR China)',
+         'en-MP'          => 'English (Northern Mariana Islands)',
+         'en-MS'          => 'English (Montserrat)',
+         'en-MT'          => 'English (Malta)',
+         'en-MU'          => 'English (Mauritius)',
+         'en-MV'          => 'English (Maldives)',
+         'en-MW'          => 'English (Malawi)',
+         'en-MY'          => 'English (Malaysia)',
+         'en-NA'          => 'English (Namibia)',
+         'en-NF'          => 'English (Norfolk Island)',
+         'en-NG'          => 'English (Nigeria)',
+         'en-NL'          => 'English (Netherlands)',
+         'en-NR'          => 'English (Nauru)',
+         'en-NU'          => 'English (Niue)',
+         'en-NZ'          => 'English (New Zealand)',
+         'en-PG'          => 'English (Papua New Guinea)',
+         'en-PH'          => 'English (Philippines)',
+         'en-PK'          => 'English (Pakistan)',
+         'en-PN'          => 'English (Pitcairn Islands)',
+         'en-PR'          => 'English (Puerto Rico)',
+         'en-PW'          => 'English (Palau)',
+         'en-RW'          => 'English (Rwanda)',
+         'en-SB'          => 'English (Solomon Islands)',
+         'en-SC'          => 'English (Seychelles)',
+         'en-SD'          => 'English (Sudan)',
+         'en-SE'          => 'English (Sweden)',
+         'en-SG'          => 'English (Singapore)',
+         'en-SH'          => 'English (St Helena)',
+         'en-SI'          => 'English (Slovenia)',
+         'en-SL'          => 'English (Sierra Leone)',
+         'en-SS'          => 'English (South Sudan)',
+         'en-SX'          => 'English (Sint Maarten)',
+         'en-SZ'          => 'English (Eswatini)',
+         'en-TC'          => 'English (Turks & Caicos Islands)',
+         'en-TK'          => 'English (Tokelau)',
+         'en-TO'          => 'English (Tonga)',
+         'en-TT'          => 'English (Trinidad & Tobago)',
+         'en-TV'          => 'English (Tuvalu)',
+         'en-TZ'          => 'English (Tanzania)',
+         'en-UG'          => 'English (Uganda)',
+         'en-UM'          => 'English (U.S. Outlying Islands)',
+         'en-US'          => 'English (United States)',
+         'en-VC'          => 'English (St Vincent & the Grenadines)',
+         'en-VG'          => 'English (British Virgin Islands)',
+         'en-VI'          => 'English (U.S. Virgin Islands)',
+         'en-VU'          => 'English (Vanuatu)',
+         'en-WS'          => 'English (Samoa)',
+         'en-ZA'          => 'English (South Africa)',
+         'en-ZM'          => 'English (Zambia)',
+         'en-ZW'          => 'English (Zimbabwe)',
+         'es'             => 'español',
+         'es-AR'          => 'español (Argentina)',
+         'es-BO'          => 'español (Bolivia)',
+         'es-BR'          => 'español (Brasil)',
+         'es-BZ'          => 'español (Belice)',
+         'es-CL'          => 'español (Chile)',
+         'es-CO'          => 'español (Colombia)',
+         'es-CR'          => 'español (Costa Rica)',
+         'es-CU'          => 'español (Cuba)',
+         'es-DO'          => 'español (República Dominicana)',
+         'es-EA'          => 'español (Ceuta y Melilla)',
+         'es-EC'          => 'español (Ecuador)',
+         'es-ES'          => 'español (España)',
+         'es-GQ'          => 'español (Guinea Ecuatorial)',
+         'es-GT'          => 'español (Guatemala)',
+         'es-HN'          => 'español (Honduras)',
+         'es-IC'          => 'español (Canarias)',
+         'es-MX'          => 'español (México)',
+         'es-NI'          => 'español (Nicaragua)',
+         'es-PA'          => 'español (Panamá)',
+         'es-PE'          => 'español (Perú)',
+         'es-PH'          => 'español (Filipinas)',
+         'es-PR'          => 'español (Puerto Rico)',
+         'es-PY'          => 'español (Paraguay)',
+         'es-SV'          => 'español (El Salvador)',
+         'es-US'          => 'español (Estados Unidos)',
+         'es-UY'          => 'español (Uruguay)',
+         'es-VE'          => 'español (Venezuela)',
+         'eu'             => 'euskara',
+         'eu-ES'          => 'euskara (Espainia)',
+         'fa'             => 'فارسی',
+         'fa-AF'          => 'فارسی (افغانستان)',
+         'fa-IR'          => 'فارسی (ایران)',
+         'fi'             => 'suomi',
+         'fi-FI'          => 'suomi (Suomi)',
+         'fr'             => 'français',
+         'fr-BE'          => 'français (Belgique)',
+         'fr-BF'          => 'français (Burkina Faso)',
+         'fr-BI'          => 'français (Burundi)',
+         'fr-BJ'          => 'français (Bénin)',
+         'fr-BL'          => 'français (Saint-Barthélemy)',
+         'fr-CA'          => 'français (Canada)',
+         'fr-CD'          => 'français (Congo-Kinshasa)',
+         'fr-CF'          => 'français (République centrafricaine)',
+         'fr-CG'          => 'français (Congo-Brazzaville)',
+         'fr-CH'          => 'français (Suisse)',
+         'fr-CI'          => 'français (Côte d’Ivoire)',
+         'fr-CM'          => 'français (Cameroun)',
+         'fr-DJ'          => 'français (Djibouti)',
+         'fr-DZ'          => 'français (Algérie)',
+         'fr-FR'          => 'français (France)',
+         'fr-GA'          => 'français (Gabon)',
+         'fr-GF'          => 'français (Guyane française)',
+         'fr-GN'          => 'français (Guinée)',
+         'fr-GP'          => 'français (Guadeloupe)',
+         'fr-GQ'          => 'français (Guinée équatoriale)',
+         'fr-HT'          => 'français (Haïti)',
+         'fr-KM'          => 'français (Comores)',
+         'fr-LU'          => 'français (Luxembourg)',
+         'fr-MA'          => 'français (Maroc)',
+         'fr-MC'          => 'français (Monaco)',
+         'fr-MF'          => 'français (Saint-Martin)',
+         'fr-MG'          => 'français (Madagascar)',
+         'fr-ML'          => 'français (Mali)',
+         'fr-MQ'          => 'français (Martinique)',
+         'fr-MR'          => 'français (Mauritanie)',
+         'fr-MU'          => 'français (Maurice)',
+         'fr-NC'          => 'français (Nouvelle-Calédonie)',
+         'fr-NE'          => 'français (Niger)',
+         'fr-PF'          => 'français (Polynésie française)',
+         'fr-PM'          => 'français (Saint-Pierre-et-Miquelon)',
+         'fr-RE'          => 'français (La Réunion)',
+         'fr-RW'          => 'français (Rwanda)',
+         'fr-SC'          => 'français (Seychelles)',
+         'fr-SN'          => 'français (Sénégal)',
+         'fr-SY'          => 'français (Syrie)',
+         'fr-TD'          => 'français (Tchad)',
+         'fr-TG'          => 'français (Togo)',
+         'fr-TN'          => 'français (Tunisie)',
+         'fr-VU'          => 'français (Vanuatu)',
+         'fr-WF'          => 'français (Wallis-et-Futuna)',
+         'fr-YT'          => 'français (Mayotte)',
+         'he'             => 'עברית',
+         'he-IL'          => 'עברית (ישראל)',
+         'hr'             => 'hrvatski',
+         'hr-BA'          => 'hrvatski (Bosna i Hercegovina)',
+         'hr-HR'          => 'hrvatski (Hrvatska)',
+         'hu'             => 'magyar',
+         'hu-HU'          => 'magyar (Magyarország)',
+         'it'             => 'italiano',
+         'it-CH'          => 'italiano (Svizzera)',
+         'it-IT'          => 'italiano (Italia)',
+         'it-SM'          => 'italiano (San Marino)',
+         'it-VA'          => 'italiano (Città del Vaticano)',
+         'ja'             => '日本語',
+         'ja-JP'          => '日本語 (日本)',
+         'ko'             => '한국어',
+         'ko-KP'          => '한국어 (조선민주주의인민공화국)',
+         'ko-KR'          => '한국어 (대한민국)',
+         'lt'             => 'lietuvių',
+         'lt-LT'          => 'lietuvių (Lietuva)',
+         'ms'             => 'Melayu',
+         'ms-BN'          => 'Melayu (Brunei)',
+         'ms-ID'          => 'Melayu (Indonesia)',
+         'ms-MY'          => 'Melayu (Malaysia)',
+         'ms-SG'          => 'Melayu (Singapura)',
+         'mt'             => 'Malti',
+         'mt-MT'          => 'Malti (Malta)',
+         'nl'             => 'Nederlands',
+         'nl-AW'          => 'Nederlands (Aruba)',
+         'nl-BE'          => 'Nederlands (België)',
+         'nl-BQ'          => 'Nederlands (Caribisch Nederland)',
+         'nl-CW'          => 'Nederlands (Curaçao)',
+         'nl-NL'          => 'Nederlands (Nederland)',
+         'nl-SR'          => 'Nederlands (Suriname)',
+         'nl-SX'          => 'Nederlands (Sint-Maarten)',
+         'no'             => 'norsk',
+         'pl'             => 'polski',
+         'pl-PL'          => 'polski (Polska)',
+         'pt'             => 'português',
+         'pt-AO'          => 'português (Angola)',
+         'pt-BR'          => 'português (Brasil)',
+         'pt-CH'          => 'português (Suíça)',
+         'pt-CV'          => 'português (Cabo Verde)',
+         'pt-GQ'          => 'português (Guiné Equatorial)',
+         'pt-GW'          => 'português (Guiné-Bissau)',
+         'pt-LU'          => 'português (Luxemburgo)',
+         'pt-MO'          => 'português (Macau, RAE da China)',
+         'pt-MZ'          => 'português (Moçambique)',
+         'pt-PT'          => 'português (Portugal)',
+         'pt-ST'          => 'português (São Tomé e Príncipe)',
+         'pt-TL'          => 'português (Timor-Leste)',
+         'ro'             => 'română',
+         'ro-MD'          => 'română (Republica Moldova)',
+         'ro-RO'          => 'română (România)',
+         'ru'             => 'русский',
+         'ru-BY'          => 'русский (Беларусь)',
+         'ru-KG'          => 'русский (Киргизия)',
+         'ru-KZ'          => 'русский (Казахстан)',
+         'ru-MD'          => 'русский (Молдова)',
+         'ru-RU'          => 'русский (Россия)',
+         'ru-UA'          => 'русский (Украина)',
+         'rw-RW'          => 'Kinyarwanda (U Rwanda)',
+         'sk'             => 'slovenčina',
+         'sk-SK'          => 'slovenčina (Slovensko)',
+         'sl'             => 'slovenščina',
+         'sl-SI'          => 'slovenščina (Slovenija)',
+         'sv'             => 'svenska',
+         'sv-AX'          => 'svenska (Åland)',
+         'sv-FI'          => 'svenska (Finland)',
+         'sv-SE'          => 'svenska (Sverige)',
+         'th'             => 'ไทย',
+         'th-TH'          => 'ไทย (ไทย)',
+         'tr'             => 'Türkçe',
+         'tr-CY'          => 'Türkçe (Kıbrıs)',
+         'tr-TR'          => 'Türkçe (Türkiye)',
+         'uk'             => 'українська',
+         'uk-UA'          => 'українська (Україна)',
+         'ur'             => 'اردو',
+         'ur-IN'          => 'اردو (بھارت)',
+         'ur-PK'          => 'اردو (پاکستان)',
+         'vi'             => 'Tiếng (Việt)',
+         'vi-VN'          => 'Tiếng (Việt Việt Nam)',
+         'zh'             => '中文',
+         'zh-Hans'        => '中文 (简体)',
+         'zh-Hans-CN'     => '中文 (中国 简体)',
+         'zh-Hans-HK'     => '中文 (中国香港特别行政区 简体)',
+         'zh-Hans-MO'     => '中文 (中国澳门特别行政区 简体)',
+         'zh-Hans-SG'     => '中文 (新加坡 简体)',
+         'zh-Hant'        => '中文 (繁體)',
+         'zh-Hant-HK'     => '中文 (中國香港特別行政區 繁體字)',
+         'zh-Hant-MO'     => '中文 (中國澳門特別行政區 繁體字)',
+         'zh-Hant-TW'     => '中文 (台灣 繁體)',
+     }
 }
 
 =head2 list_languages(current-lang)
@@ -6546,7 +7046,6 @@ if ($logemail) {
     if ($mdesc) {
         $body .= &text('log_email_moddesc', $mdesc)."\n";
         }
-    $main::theme_prevent_make_date = 1;
     $body .= &text('log_email_time', &make_date(time()))."\n";
     $body .= &text('log_email_system', &get_display_hostname())."\n";
     $body .= &text('log_email_user', $remote_user)."\n";
@@ -6590,54 +7089,63 @@ if ($gconfig{'logfiles'} && !&get_module_variable('$no_log_file_changes')) {
 	}
 }
 
-=head2 webmin_debug_var_dump(objref, [varname], [use-pid], [use-no-dumper])
+=head2 var_dump(objref, [filename|no-html], [pid-to-filename])
 
-Write content of a variable or hash/array ref to a file. For internal debug use only.
- Example :
-   webmin_debug_var_dump(\%hash_ref);
-   webmin_debug_var_dump(\@array_ref);
-   webmin_debug_var_dump($var_name);
+Prints to UI or dumps to a file content of array/hash
+ref or variable. For internal debug use only.
 
-  Calling `webmin_debug_var_dump(\%ENV, 'env')` will write a file under Webmin temporary
-  directory with a name `.debug_webmin__data_dumper___env` dumping its content nicely
+ Examples to print output to UI:
+   var_dump(\@array_ref, 0); # No HTML, standard output
+   var_dump(\%hash_ref);     # HTML output (newlines and spaces replaced with <br> and &nbsp;)
+
+ Examples to dump content to a file (under Webmin tempdir):
+   var_dump(\@array_ref, 'array_ref_name', 'add-process-pid-to-filename');
+   var_dump(\%hash_ref, 'hash_ref_name');
 
 =cut
-sub webmin_debug_var_dump
+sub var_dump
 {
-my ($objref, $varname, $usepid, $nodumper) = @_;
+my ($objref, $filename, $pidtofilename) = @_;
 my $pid;
-$pid = "__" . $$ if ($usepid);
-$varname ||= lc(ref($objref) || 'var') ;
-$varname  =~ tr/A-Za-z0-9\_\-//cd;
-$varname = "___$varname";
+$pid = "-" . $$ if ($pidtofilename);
+my $filename_ = "$pid";
 
-my $file_name = '.debug_' . get_product_name() . $pid;
+if ($filename && $filename_) {
+	$filename  =~ tr/A-Za-z0-9\_\-//cd;
+	$filename = "$filename--";
+	}
 
-if ($nodumper) {
-	if (ref($objref) eq 'HASH') {
-		write_file(tempname("${file_name}__hash__dump$varname"), $objref);
+eval 'use Data::Dumper';
+if (!$@) {
+	$Data::Dumper::Indent = 1;
+	$Data::Dumper::Terse = 1;
+	$Data::Dumper::Deepcopy = 1;
+	$Data::Dumper::Sortkeys = 1;
+
+	# Write file
+	if ($filename) {
+		write_file_contents(tempname("${filename}${filename_}"), Dumper($objref));
 		}
-	elsif (ref($objref) eq 'ARRAY') {
-		my $arrindex = 0;
-		my @array_list = map { "\n@{[$arrindex++]}: $_" } @{$objref};
-		write_file_contents(tempname("${file_name}__array__dump$varname"), "@array_list");
-		}
+	# Print on screen
 	else {
-		write_file_contents(tempname("${file_name}__var__dump$varname"), "$objref");
+		my $dumped_data = Dumper($objref);
+		if ($filename ne '0') {
+			$dumped_data = &html_escape($dumped_data);
+			$dumped_data =~ s/\n/<br>/g;
+			$dumped_data =~ s/\s/&nbsp;/g;
+			}
+		print $dumped_data;
 		}
 	}
 else {
-	eval 'use Data::Dumper';
-	if (!$@) {
-		$Data::Dumper::Indent = 1;
-		$Data::Dumper::Terse = 1;
-		$Data::Dumper::Varname = 'this';
-		$Data::Dumper::Sortkeys = 1;
-		write_file_contents(tempname("${file_name}__data_dumper$varname"), Dumper($objref));
+	my $dumpererr = "Error: The Data::Dumper Perl module is not available on your system";
+	# Write file
+	if ($filename) {
+		write_file_contents(tempname("${filename_}_error"), $dumpererr);
 		}
+	# Print on screen
 	else {
-		write_file_contents(tempname("${file_name}__data_dumper_error"),
-			"Error: The Data::Dumper Perl module is not available on your system");
+		print Dumper($dumpererr);
 		}
 	}
 }
@@ -6740,7 +7248,7 @@ sub backquote_with_timeout
 {
 my $realcmd = &translate_command($_[0]);
 my $out;
-my $pid = &open_execute_command(OUT, "($realcmd) <$null_file", 1, $_[2]);
+my $pid = &open_execute_command(OUT, "($realcmd) <".quotemeta($null_file), 1, $_[2]);
 my $start = time();
 my $timed_out = 0;
 my $linecount = 0;
@@ -6963,6 +7471,34 @@ if (!$exists) {
 return 1;
 }
 
+=head2 make_dir_recursive(dir, [mod])
+
+Unless in read-only mode, creates a directory (recursively).
+Sets directory permissions for newly created directory,
+if called. This is pure Perl implementation.
+
+=cut
+sub make_dir_recursive
+{
+my ($dir, $mod) = @_;
+if (&is_readonly_mode()) {
+    print STDERR "Vetoing directory $dir\n";
+    return 1;
+    }
+$dir = &translate_filename($dir);
+my @folders = split(/\//, $dir);
+my $folder_created;
+foreach my $folder (@folders) {
+    next if (!$folder);
+    $folder_created .= "/$folder";
+    if (mkdir($folder_created)) {
+        chmod($mod, $folder_created)
+            if ($mod && -d $folder_created);
+        }
+    }
+return -d $dir;
+}
+
 =head2 set_ownership_permissions(user, group, perms, file, ...)
 
 Sets the user, group owner and permissions on some files. The parameters are :
@@ -7175,10 +7711,11 @@ internal use only.
 =cut
 sub remote_session_name
 {
-return ref($_[0]) && $_[0]->{'host'} && $_[0]->{'port'} ?
-		"$_[0]->{'host'}:$_[0]->{'port'}.$$" :
-       $_[0] eq "" || ref($_[0]) && $_[0]->{'id'} == 0 ? "" :
-       ref($_[0]) ? "" : "$_[0].$$";
+my ($s) = @_;
+return ref($s) && $s->{'host'} && $s->{'port'} ?
+		"$s->{'host'}:$s->{'port'}.$$" :
+       $s eq "" || ref($s) && $s->{'id'} == 0 ? "" :
+       ref($s) ? "" : "$s.$$";
 }
 
 =head2 remote_foreign_require(server, module, file)
@@ -7192,20 +7729,26 @@ Servers Index module, or a hash reference for a system from that module.
 =cut
 sub remote_foreign_require
 {
-my $call = { 'action' => 'require',
-	     'module' => $_[1],
-	     'file' => $_[2] };
-my $sn = &remote_session_name($_[0]);
-if ($remote_session{$sn}) {
-	$call->{'session'} = $remote_session{$sn};
+my ($s, $mod, $file) = @_;
+my $sn = &remote_session_name($s);
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	&foreign_require($mod, $file);
 	}
 else {
-	$call->{'newsession'} = 1;
-	}
-my $rv = &remote_rpc_call($_[0], $call);
-if ($rv->{'session'}) {
-	$remote_session{$sn} = $rv->{'session'};
-	$remote_session_server{$sn} = $_[0];
+	my $call = { 'action' => 'require',
+		     'module' => $mod,
+		     'file' => $file };
+	if ($remote_session{$sn}) {
+		$call->{'session'} = $remote_session{$sn};
+		}
+	else {
+		$call->{'newsession'} = 1;
+		}
+	my $rv = &remote_rpc_call($s, $call);
+	if ($rv->{'session'}) {
+		$remote_session{$sn} = $rv->{'session'};
+		$remote_session_server{$sn} = $s;
+		}
 	}
 }
 
@@ -7219,13 +7762,19 @@ system's hostname.
 =cut
 sub remote_foreign_call
 {
-return undef if (&is_readonly_mode());
-my $sn = &remote_session_name($_[0]);
-return &remote_rpc_call($_[0], { 'action' => 'call',
-				 'module' => $_[1],
-				 'func' => $_[2],
-				 'session' => $remote_session{$sn},
-				 'args' => [ @_[3 .. $#_] ] } );
+my ($s, $mod, $func, @args) = @_;
+my $sn = &remote_session_name($s);
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	return &foreign_call($mod, $func, @args);
+	}
+else {
+	return undef if (&is_readonly_mode());
+	return &remote_rpc_call($s, { 'action' => 'call',
+				      'module' => $mod,
+				      'func' => $func,
+				      'session' => $remote_session{$sn},
+				      'args' => [ @args ] } );
+	}
 }
 
 =head2 remote_foreign_check(server, module, [api-only])
@@ -7237,9 +7786,16 @@ parameter.
 =cut
 sub remote_foreign_check
 {
-return &remote_rpc_call($_[0], { 'action' => 'check',
-				 'module' => $_[1],
-				 'api' => $_[2] });
+my ($s, $mod, $api) = @_;
+my $sn = &remote_session_name($s);
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	return &foreign_check($mod, $api);
+	}
+else {
+	return &remote_rpc_call($s, { 'action' => 'check',
+				      'module' => $mod,
+				      'api' => $api });
+	}
 }
 
 =head2 remote_foreign_config(server, module)
@@ -7250,8 +7806,16 @@ Equivalent to foreign_config, but for a remote system.
 =cut
 sub remote_foreign_config
 {
-return &remote_rpc_call($_[0], { 'action' => 'config',
-				 'module' => $_[1] });
+my ($s, $mod) = @_;
+my $sn = &remote_session_name($s);
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	my %c = &foreign_config($mod);
+	return \%c;
+	}
+else {
+	return &remote_rpc_call($s, { 'action' => 'config',
+				      'module' => $mod });
+	}
 }
 
 =head2 remote_eval(server, module, code)
@@ -7264,12 +7828,20 @@ only be called after remote_foreign_require for the same server and module.
 =cut
 sub remote_eval
 {
-return undef if (&is_readonly_mode());
-my $sn = &remote_session_name($_[0]);
-return &remote_rpc_call($_[0], { 'action' => 'eval',
-				 'module' => $_[1],
-				 'code' => $_[2],
-				 'session' => $remote_session{$sn} });
+my ($s, $mod, $code) = @_;
+my $sn = &remote_session_name($s);
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	my $pkg = $mod;
+	$pkg =~ s/[^A-Za-z0-9]/_/g;
+	return eval "package $pkg; $code";
+	}
+else {
+	return undef if (&is_readonly_mode());
+	return &remote_rpc_call($s, { 'action' => 'eval',
+				      'module' => $mod,
+				      'code' => $code,
+				      'session' => $remote_session{$sn} });
+	}
 }
 
 =head2 remote_write(server, localfile, [remotefile], [remotebasename])
@@ -7283,31 +7855,41 @@ selected temporary filename will be used, and returned by the function.
 sub remote_write
 {
 my ($host, $localfile, $remotefile, $remotebase) = @_;
-return undef if (&is_readonly_mode());
-my ($data, $got);
-my $rv = &remote_rpc_call($host, { 'action' => 'tcpwrite',
-				   'file' => $remotefile,
-				   'name' => $remotebase } );
-my $error;
-my $serv = !ref($host) ? $host : ($host->{'ip'} || $host->{'host'});
-&open_socket($serv || "localhost", $rv->[1], TWRITE, \$error);
-return &$main::remote_error_handler("Failed to transfer file : $error")
-	if ($error);
-open(FILE, "<".$localfile) ||
-	return &$main::remote_error_handler("Failed to open $localfile : $!");
-my $bs = &get_buffer_size();
-while(read(FILE, $got, $bs) > 0) {
-	print TWRITE $got;
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	my $file = $remotefile ? $remotefile :
+		   $remotebase ? &tempname($remotebase) :
+				 &tempname();
+	&copy_source_dest($localfile, $file) ||
+		return &$main::remote_error_handler("Failed to copy $localfile to $file : $!");
+	return $file;
 	}
-close(FILE);
-shutdown(TWRITE, 1);
-$error = <TWRITE>;
-if ($error && $error !~ /^OK/) {
-	# Got back an error!
-	return &$main::remote_error_handler("Failed to transfer file : $error");
+else {
+	return undef if (&is_readonly_mode());
+	my ($data, $got);
+	my $rv = &remote_rpc_call($host, { 'action' => 'tcpwrite',
+					   'file' => $remotefile,
+					   'name' => $remotebase } );
+	my $error;
+	my $serv = !ref($host) ? $host : ($host->{'ip'} || $host->{'host'});
+	&open_socket($serv || "localhost", $rv->[1], TWRITE, \$error);
+	return &$main::remote_error_handler("Failed to transfer file : $error")
+		if ($error);
+	open(FILE, "<".$localfile) ||
+		return &$main::remote_error_handler("Failed to open $localfile : $!");
+	my $bs = &get_buffer_size();
+	while(read(FILE, $got, $bs) > 0) {
+		print TWRITE $got;
+		}
+	close(FILE);
+	shutdown(TWRITE, 1);
+	$error = <TWRITE>;
+	if ($error && $error !~ /^OK/) {
+		# Got back an error!
+		return &$main::remote_error_handler("Failed to transfer file : $error");
+		}
+	close(TWRITE);
+	return $rv->[0];
 	}
-close(TWRITE);
-return $rv->[0];
 }
 
 =head2 remote_read(server, localfile, remotefile)
@@ -7321,25 +7903,31 @@ system, and remotefile is the file to fetch from the remote server.
 sub remote_read
 {
 my ($host, $localfile, $remotefile) = @_;
-my $rv = &remote_rpc_call($host, { 'action' => 'tcpread',
-				   'file' => $remotefile } );
-if (!$rv->[0]) {
-	return &$main::remote_error_handler("Failed to transfer file : $rv->[1]");
+if ($sn eq "" && ref($s) && $s->{'local'}) {
+	&copy_source_dest($remotefile, $localfile) ||
+		return &$main::remote_error_handler("Failed to copy $remotefile to $localfile : $!");
 	}
-my $error;
-my $serv = !ref($host) ? $host : ($host->{'ip'} || $host->{'host'});
-&open_socket($serv || "localhost", $rv->[1], TREAD, \$error);
-return &$main::remote_error_handler("Failed to transfer file : $error")
-	if ($error);
-my $got;
-open(FILE, ">$localfile") ||
-	return &$main::remote_error_handler("Failed to open $localfile : $!");
-my $bs = &get_buffer_size();
-while(read(TREAD, $got, $bs) > 0) {
-	print FILE $got;
+else {
+	my $rv = &remote_rpc_call($host, { 'action' => 'tcpread',
+					   'file' => $remotefile } );
+	if (!$rv->[0]) {
+		return &$main::remote_error_handler("Failed to transfer file : $rv->[1]");
+		}
+	my $error;
+	my $serv = !ref($host) ? $host : ($host->{'ip'} || $host->{'host'});
+	&open_socket($serv || "localhost", $rv->[1], TREAD, \$error);
+	return &$main::remote_error_handler("Failed to transfer file : $error")
+		if ($error);
+	my $got;
+	open(FILE, ">$localfile") ||
+		return &$main::remote_error_handler("Failed to open $localfile : $!");
+	my $bs = &get_buffer_size();
+	while(read(TREAD, $got, $bs) > 0) {
+		print FILE $got;
+		}
+	close(FILE);
+	close(TREAD);
 	}
-close(FILE);
-close(TREAD);
 }
 
 =head2 remote_finished
@@ -7371,7 +7959,8 @@ fails. Useful if you want to have more control over your remote operations.
 =cut
 sub remote_error_setup
 {
-$main::remote_error_handler = $_[0] || \&error;
+my ($func) = @_;
+$main::remote_error_handler = $func || \&error;
 }
 
 =head2 remote_rpc_call(server, &structure)
@@ -7383,30 +7972,30 @@ and is called by the other remote_* functions.
 =cut
 sub remote_rpc_call
 {
+my ($serv_host, $str) = @_;
 my $serv;
-my $sn = &remote_session_name($_[0]);	# Will be undef for local connection
-my $tostr = &serialise_variable($_[1]);
-if (ref($_[0])) {
+my $sn = &remote_session_name($serv_host);  # Will be undef for local connection
+if (ref($serv_host)) {
 	# Server structure was given
-	$serv = $_[0];
+	$serv = $serv_host;
 	$serv->{'user'} || $serv->{'id'} == 0 ||
 		return &$main::remote_error_handler(
 			"No Webmin login set for server");
 	}
-elsif ($_[0]) {
+elsif ($serv_host) {
 	# lookup the server in the webmin servers module if needed
 	if (!%main::remote_servers_cache) {
 		&foreign_require("servers");
-		foreach $s (&foreign_call("servers", "list_servers")) {
+		foreach $s (&servers::list_servers()) {
 			$main::remote_servers_cache{$s->{'host'}} = $s;
 			$main::remote_servers_cache{$s->{'host'}.":".$s->{'port'}} = $s;
 			}
 		}
-	$serv = $main::remote_servers_cache{$_[0]};
+	$serv = $main::remote_servers_cache{$serv_host};
 	$serv || return &$main::remote_error_handler(
-				"No Webmin Servers entry for $_[0]");
+				"No Webmin Servers entry for $serv_host");
 	$serv->{'user'} || return &$main::remote_error_handler(
-				"No login set for server $_[0]");
+				"No login set for server $serv_host");
 	}
 my $ip = $serv->{'ip'} || $serv->{'host'};
 
@@ -7429,8 +8018,7 @@ if ($serv->{'fast'} || !$sn) {
 		# Need to open the connection
 		my $reqs;
 		if ($serv->{'checkssl'}) {
-			$reqs = { 'host' => 1,
-				  'checkhost' => $serv->{'host'},
+			$reqs = { 'host' => $serv->{'host'},
 				  'self' => 1 };
 			my %sconfig = &foreign_config("servers");
 			if ($sconfig{'capath'}) {
@@ -7439,7 +8027,7 @@ if ($serv->{'fast'} || !$sn) {
 			}
 		my $con = &make_http_connection(
 			$ip, $serv->{'port'}, $serv->{'ssl'},
-			"POST", "/fastrpc.cgi", undef, undef, $reqs);
+			"GET", "/fastrpc.cgi", undef, undef, $reqs);
 		return &$main::remote_error_handler(
 		    "Failed to connect to $serv->{'host'} : $con")
 			if (!ref($con));
@@ -7448,10 +8036,7 @@ if ($serv->{'fast'} || !$sn) {
 		my $auth = &encode_base64("$user:$pass");
 		$auth =~ tr/\n//d;
 		&write_http_connection($con, "Authorization: basic $auth\r\n");
-		&write_http_connection($con, "Content-length: ",
-					     length($tostr),"\r\n");
 		&write_http_connection($con, "\r\n");
-		&write_http_connection($con, $tostr);
 
 		# read back the response
 		my $line = &read_http_connection($con);
@@ -7459,6 +8044,7 @@ if ($serv->{'fast'} || !$sn) {
 		if ($line =~ /^HTTP\/1\..\s+40[13]\s+/) {
 			return &$main::remote_error_handler("Login to RPC server as $user rejected");
 			}
+		$line || return &$main::remote_error_handler("HTTP error : No status line");
 		$line =~ /^HTTP\/1\..\s+200\s+/ ||
 			return &$main::remote_error_handler("HTTP error : $line");
 		do {
@@ -7473,11 +8059,12 @@ if ($serv->{'fast'} || !$sn) {
 		       $line =~ /^1\s+(\S+)\s+(\S+)/) {
 			# Started ok .. connect and save SID
 			&close_http_connection($con);
-			my ($port, $sid, $version, $error) = ($1, $2, $3);
+			my ($port, $sid, $version) = ($1, $2, $3);
+			my $error;
 			&open_socket($ip, $port, $sid, \$error);
 			return &$main::remote_error_handler("Failed to connect to fastrpc.cgi : $error")
 				if ($error);
-			$fast_fh_cache{$sn} = $sid;
+			$fast_fh_cache{$sn} = [ $sid, $version ];
 			$remote_server_version{$sn} = $version;
 			}
 		else {
@@ -7530,14 +8117,15 @@ if ($serv->{'fast'} || !$sn) {
 			close(RPCOUTr);
 			return &$main::remote_error_handler("RPC error : $2");
 			}
-		elsif ($line =~ /^1\s+(\S+)\s+(\S+)/) {
+		elsif ($line =~ /^1\s+(\S+)\s+(\S+)\s+(\S+)/) {
 			# Started ok .. connect and save SID
 			close(SOCK);
 			close(RPCOUTr);
-			my ($port, $sid, $error) = ($1, $2, undef);
+			my ($port, $sid, $version) = ($1, $2, $3);
+			my $error;
 			&open_socket("localhost", $port, $sid, \$error);
 			return &$main::remote_error_handler("Failed to connect to fastrpc.cgi : $error") if ($error);
-			$fast_fh_cache{$sn} = $sid;
+			$fast_fh_cache{$sn} = [ $sid, $version ];
 			}
 		else {
 			# Unexpected response
@@ -7551,7 +8139,9 @@ if ($serv->{'fast'} || !$sn) {
 			}
 		}
 	# Got a connection .. send off the request
-	my $fh = $fast_fh_cache{$sn};
+	my ($fh, $version) = @{$fast_fh_cache{$sn}};
+	my $dumper = &compare_version_numbers($version, 2.014) >= 0;
+	my $tostr = &serialise_variable($str, $dumper);
 	print $fh length($tostr)," $fh\n";
 	print $fh $tostr;
 	my $rstr = <$fh>;
@@ -7603,6 +8193,7 @@ if ($serv->{'fast'} || !$sn) {
 else {
 	# Call rpc.cgi on remote server
 	my $error = 0;
+	my $tostr = &serialise_variable($str);
 	my $con = &make_http_connection($ip, $serv->{'port'},
 					$serv->{'ssl'}, "POST", "/rpc.cgi");
 	return &$main::remote_error_handler("Failed to connect to $serv->{'host'} : $con") if (!ref($con));
@@ -7622,6 +8213,7 @@ else {
 	if ($line =~ /^HTTP\/1\..\s+401\s+/) {
 		return &$main::remote_error_handler("Login to RPC server as $user rejected");
 		}
+	$line || return &$main::remote_error_handler("HTTP error : No status line");
 	$line =~ /^HTTP\/1\..\s+200\s+/ || return &$main::remote_error_handler("RPC HTTP error : $line");
 	do {
 		$line = &read_http_connection($con);
@@ -7728,10 +8320,11 @@ foreach my $g (@$servs) {
 
 sub remote_multi_callback_error
 {
-$remote_multi_callback_err = $_[0];
+my ($err) = @_;
+$remote_multi_callback_err = $err;
 }
 
-=head2 serialise_variable(variable)
+=head2 serialise_variable(variable, [data-dumper-format])
 
 Converts some variable (maybe a scalar, hash ref, array ref or scalar ref)
 into a url-encoded string. In the cases of arrays and hashes, it is recursively
@@ -7740,27 +8333,36 @@ called on each member to serialize the entire object.
 =cut
 sub serialise_variable
 {
-if (!defined($_[0])) {
+my ($var, $dumper) = @_;
+if ($dumper) {
+	# Convert to Data::Dumper format
+	eval "use Data::Dumper";
+	if (!$@) {
+		$Data::Dumper::Purity = 1;
+		return Dumper($var);
+		}
+	}
+if (!defined($var)) {
 	return 'UNDEF';
 	}
-my $r = ref($_[0]);
+my $r = ref($var);
 my $rv;
 if (!$r) {
-	$rv = &urlize($_[0]);
+	$rv = &urlize($var);
 	}
 elsif ($r eq 'SCALAR') {
-	$rv = &urlize(${$_[0]});
+	$rv = &urlize(${$var});
 	}
 elsif ($r eq 'ARRAY') {
-	$rv = join(",", map { &urlize(&serialise_variable($_)) } @{$_[0]});
+	$rv = join(",", map { &urlize(&serialise_variable($_)) } @{$var});
 	}
 elsif ($r eq 'HASH') {
 	$rv = join(",", map { &urlize(&serialise_variable($_)).",".
-			      &urlize(&serialise_variable($_[0]->{$_})) }
-		            keys %{$_[0]});
+			      &urlize(&serialise_variable($var->{$_})) }
+		            keys %{$var});
 	}
 elsif ($r eq 'REF') {
-	$rv = &serialise_variable(${$_[0]});
+	$rv = &serialise_variable(${$var});
 	}
 elsif ($r eq 'CODE') {
 	# Code not handled
@@ -7770,8 +8372,8 @@ elsif ($r) {
 	# An object - treat as a hash
 	$r = "OBJECT ".&urlize($r);
 	$rv = join(",", map { &urlize(&serialise_variable($_)).",".
-			      &urlize(&serialise_variable($_[0]->{$_})) }
-		            keys %{$_[0]});
+			      &urlize(&serialise_variable($var->{$_})) }
+		            keys %{$var});
 	}
 return ($r ? $r : 'VAL').",".$rv;
 }
@@ -7785,7 +8387,13 @@ object, the same class is used on this system, if available.
 =cut
 sub unserialise_variable
 {
-my @v = split(/,/, $_[0]);
+my ($str) = @_;
+if (substr($str, 0, 5) eq '$VAR1') {
+	# In Data::Dumper format
+	$rv = eval $str.' $VAR1;';
+	return $rv;
+	}
+my @v = split(/,/, $str);
 my $rv;
 if ($v[0] eq 'VAL') {
 	@v = split(/,/, $_[0], -1);
@@ -7871,7 +8479,7 @@ if ($gconfig{'db_sizedate'}) {
 return "<input type=button onClick='window.dfield = form.$_[0]; window.mfield = form.$_[1]; window.yfield = form.$_[2]; window.open(\"@{[&get_webprefix()]}/date_chooser.cgi?day=\"+escape(dfield.value)+\"&month=\"+escape(mfield.selectedIndex)+\"&year=\"+yfield.value, \"chooser\", \"toolbar=no,menubar=no,scrollbars=yes,width=$w,height=$h\")' value=\"...\">\n";
 }
 
-=head2 help_file(module, file)
+=head2 help_file(module, file, [force-help-directory])
 
 Returns the path to a module's help file of some name, typically under the
 help directory with a .html extension.
@@ -7879,18 +8487,57 @@ help directory with a .html extension.
 =cut
 sub help_file
 {
-my $mdir = &module_root_directory($_[0]);
-my $dir = "$mdir/help";
+my ($mod, $file, $forcedir) = @_;
+my $dir = $forcedir || &module_root_directory($mod)."/help";
 my $auto = load_language_auto();
 foreach my $o (@lang_order_list) {
-	my $lang = "$dir/$_[1].$o.html";
-	my $lang_auto = "$dir/$_[1].$o.auto.html";
+	my $lang = "$dir/$file.$o.html";
+	my $lang_auto = "$dir/$file.$o.auto.html";
 	if ($auto && !-r $lang && -r $lang_auto) {
 		return $lang_auto;
 		}
 	return $lang if (-r $lang);
 	}
-return "$dir/$_[1].html";
+return "$dir/$file.html";
+}
+
+=head2 read_help_file(module, file)
+
+Reads the contents of a help file, either unpacked or from a ZIP
+
+=cut
+sub read_help_file
+{
+my ($module, $file) = @_;
+my $path = &help_file($module, $file);
+if (-r $path) {
+	return &read_file_contents($path);
+	}
+my $gzpath = $path.".gz";
+if (-r $gzpath) {
+	my $out = &backquote_command(
+		"gunzip -c ".quotemeta($gzpath)." 2>/dev/null");
+	return $? ? undef : $out;
+	}
+my $zip = $path;
+$zip =~ s/\/[^\/]+$/\/help.zip/;
+if (-r $zip) {
+	my @files;
+	foreach my $o (@lang_order_list) {
+		next if ($o eq "en");
+		push(@files, $file.".".$o.".auto.html");
+		push(@files, $file.".".$o.".html");
+		}
+	push(@files, $file.".html");
+	foreach my $f (@files) {
+		my $out = &backquote_command(
+			"unzip -p ".quotemeta($zip)." ".
+			quotemeta($f)." 2>/dev/null");
+		return $out if ($out && !$?);
+		}
+	return undef;
+	}
+return undef;
 }
 
 =head2 seed_random
@@ -8349,7 +8996,8 @@ foreach my $e ('WEBMIN_CONFIG', 'SERVER_NAME', 'CONTENT_TYPE', 'REQUEST_URI',
 	    'HTTPS', 'FOREIGN_MODULE_NAME', 'FOREIGN_ROOT_DIRECTORY',
 	    'SCRIPT_FILENAME', 'PATH_TRANSLATED', 'BASE_REMOTE_USER',
 	    'DOCUMENT_REALROOT', 'MINISERV_CONFIG', 'MYSQL_PWD',
-	    'MINISERV_PID') {
+	    'MINISERV_PID', 'MINISERV_CERTFILE', 'MINISERV_KEYFILE',
+	    'SERVER_REALROOT', 'REMOTE_ADDR') {
 	delete($ENV{$e});
 	}
 }
@@ -8622,8 +9270,8 @@ sub filter_javascript
 my ($rv) = @_;
 $rv =~ s/<\s*script[^>]*>([\000-\377]*?)<\s*\/script\s*>//gi;
 $rv =~ s/(on(Abort|BeforeUnload|Blur|Change|Click|ContextMenu|Copy|Cut|DblClick|Drag|DragEnd|DragEnter|DragLeave|DragOver|DragStart|DragDrop|Drop|Error|Focus|FocusIn|FocusOut|HashChange|Input|Invalid|KeyDown|KeyPress|KeyUp|Load|MouseDown|MouseEnter|MouseLeave|MouseMove|MouseOut|MouseOver|MouseUp|Move|Paste|PageShow|PageHide|Reset|Resize|Scroll|Search|Select|Submit|Toggle|Unload)=)/x$1/gi;
-$rv =~ s/(javascript:)/x$1/gi;
-$rv =~ s/(vbscript:)/x$1/gi;
+$rv =~ s/(javascript(:|&colon;|&#58;|&#x3A;))/x$1/gi;
+$rv =~ s/(vbscript(:|&colon;|&#58;|&#x3A;))/x$1/gi;
 $rv =~ s/<([^>]*\s|)(on\S+=)(.*)>/<$1x$2$3>/gi;
 return $rv;
 }
@@ -8674,22 +9322,22 @@ my @bits = split(/\/+/, $dir);
 my @fixedbits = ();
 $_[1] = 0;
 foreach my $b (@bits) {
-        if ($b eq ".") {
-                # Do nothing..
-                }
-        elsif ($b eq "..") {
-                # Remove last dir
-                if (scalar(@fixedbits) == 0) {
+	if ($b eq ".") {
+		# Do nothing..
+		}
+	elsif ($b eq "..") {
+		# Remove last dir
+		if (scalar(@fixedbits) == 0) {
 			# Cannot! Already at root!
 			return undef;
-                        }
-                pop(@fixedbits);
-                }
-        else {
-                # Add dir to list
-                push(@fixedbits, $b);
-                }
-        }
+			}
+		pop(@fixedbits);
+		}
+	else {
+		# Add dir to list
+		push(@fixedbits, $b);
+		}
+	}
 return "/".join('/', @fixedbits);
 }
 
@@ -9180,6 +9828,7 @@ bytes or kB.
 sub nice_size
 {
 my ($bytes, $minimal, $decimal) = @_;
+return undef if (!defined($bytes));
 &load_theme_library();
 if (defined(&theme_nice_size) &&
     $main::header_content_type eq "text/html" &&
@@ -9589,7 +10238,7 @@ else {
 	}
 }
 
-=head2 close_tempfile(file|handle)
+=head2 close_tempfile(file|handle, [fail-if-empty])
 
 Copies a temp file to the actual file, assuming that all writes were
 successful. The handle must have been one passed to open_tempfile.
@@ -9599,6 +10248,7 @@ sub close_tempfile
 {
 my $file;
 my $fh = &callers_package($_[0]);
+my $notempty = $_[1];
 
 if (defined($file = $main::open_temphandles{$fh})) {
 	# Closing a handle
@@ -9622,6 +10272,10 @@ elsif (defined($main::open_tempfiles{$_[0]})) {
 		       " >/dev/null 2>&1");
 		}
 	my @old_attributes = &get_clear_file_attributes($_[0]);
+	if ($notempty && -z $main::open_tempfiles{$_[0]}) {
+		if ($noerror) { return 0; }
+		else { &error("Temporary file @{[html_escape($main::open_tempfiles{$_[0]})]} is empty!"); }
+		}
 	if (!rename($main::open_tempfiles{$_[0]}, $_[0])) {
 		if ($noerror) { return 0; }
 		else { &error("Failed to replace @{[html_escape($_[0])]} with @{[html_escape($main::open_tempfiles{$_[0]})]} : $!"); }
@@ -9799,7 +10453,7 @@ if ($$ == $main::initial_process_id) {
 		&disconnect_userdb($str, $conn->[0], 1);
 		}
 
-	if (!$ENV{'SCRIPT_NAME'}) {
+	if ($main::webmin_script_type ne 'web') {
 		# In a command-line script - call the real exit, so that the
 		# exit status gets properly propogated. In some cases this
 		# was not happening.
@@ -10331,6 +10985,181 @@ $rv =~ s/\$\{[A-Z]+\}//g;
 return $rv;
 }
 
+=head2 substitute_pattern(regex-pattern, [&params])
+
+Given regular expression generates a string based on the pattern. Hash reference
+with params can be used to control default pattern length, results filtering and
+replacement, date/time substitution and manipulate resulted string with callback
+
+This function must be save to be used with patterns defined by a user to generate
+strings with desired pattern, like usernames
+
+Examples:
+
+    Generate random MAC address
+      - call   : substitute_pattern('[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}:[a-f0-9]{2}');
+      - result : d3:18:2d:24:97:a7
+
+    Generate random HEX string with 40 characters
+      - call   : substitute_pattern('[a-f0-9]{40}');
+      - result : b020475196675a88810321341f2578d32c634049
+
+    Generate a username based on the pattern set by a user
+      - call   : substitute_pattern('u-"[\d]{4}"-g[\d]', {'length' => 2, filter => '[^A-Za-z0-9\\-_]'})
+      - result : u-6451-g98
+      - desc   : even though a user sets a pattern for a username as 'u-"[\d]{4}"-g[\d]', the filter will
+                 make sure that double quotes will be removed and a second matching group for a numerical
+                 string will be set to length of two digits (default is one)
+
+    Generate a username based on the pattern set by a user, checking if it exists using callback
+      - call   : my $callback = sub {
+                   my $user = shift;
+                   if (user_exists($user)) {
+                      return error("Error: User $user already exists!");
+                   }
+                   return $user;
+                 };
+                 my $pattern = 'user-[\d]{4}';
+                 my $params = {'filter' => '[^A-Za-z0-9\\-_]', 'callback' => $callback};
+                 substitute_pattern($pattern, $params);
+      - result : user-4263 or error if user exists
+
+    Generate filename substituting datetime template strings
+      - call   : my $params = {'filter' => '[^A-Za-z0-9\\-_:]', 'substitute-datetime' => 1};
+                 my $pattern = 'file-[\d]{4}--${year}-${month}-${day}_${hours}:${minute}:${seconds}';
+                 substitute_pattern($pattern, $params); 
+      - result : file-7385--2021-12-25_14:00:00
+      - desc   : a `filter` param will make sure that in case the pattern is comming from the user all
+                 disallowed characters will be discarded, and `substitute-datetime` param will make sure
+                 that the pattern variables such as `${year}` or `${days}` will be replaced accordingly
+
+    Generate filename with substituting template strings
+      - call   : my $params = {'substitute-template' => 1,
+                               'substitute-func' => 'virtual_server::substitute_domain_template',
+                               'substitute-hash' => {'dom' => 'mydom.com'}};
+                 my $pattern = 'file-[\d]{4}--$DOM';
+                 substitute_pattern($pattern, $params); 
+      - result : file-4089--mydom.com
+
+=cut
+
+sub substitute_pattern
+{
+my ($pattern, $params) = @_;
+my $string;
+my $_param = sub {
+    my $param = shift;
+    if (ref($params) && $params->{$param}) {
+        return $params->{$param};
+    }
+};
+my $_shuffle = sub {
+    my $a = shift;
+    my $c;
+    for ($c = @{$a}; --$c;) {
+        my $b = int(rand($c + 1));
+        next if $c == $b;
+        @{$a}[$c, $b] = @{$a}[$b, $c];
+    }
+};
+
+# Parse passed pattern to build a string based on it
+while ($pattern =~
+    /(?|\[([^]]*)\]\{(.*?)\}|\[(.*?)\](.*?)|([\_\-\.]+)(.*?)|([a-zA-Z0-9\-\_\.\:\+\!\@\#\$\%\^\&\*\(\)\=\~\<\>\"\'\{\}\/\\]+)(.*?))/g)
+{
+    my $match  = $1;
+    my $length = (int($2) || int(&$_param('length') || 1)) - 1;
+
+    # Matches replacements
+    $match = 'A-Za-z0-9' if ($match eq '\w');
+    $match = '0-9'       if ($match eq '\d');
+
+    my (%ranges) = $match =~ /([a-zA-Z0-9])-([a-zA-Z0-9])/g;
+    my @ranges_ = ();
+    if (%ranges) {
+        foreach my $range (keys %ranges) {
+            my $a = $range;
+            my $b = $ranges{$range};
+            if (($a =~ /^[a-z]$/ && $b =~ /^[a-z]$/) ||
+                ($a =~ /^[A-Z]$/ && $b =~ /^[A-Z]$/) ||
+                ($a =~ /^[0-9]$/ && $b =~ /^[0-9]$/))
+            {
+                push(@ranges_, ($a .. $b));
+
+                # Ballance to satisfy needed length
+                if (scalar(@ranges_) < $length) {
+                    @ranges_ =
+                      (@ranges_) x ceil($length / scalar(@ranges_));
+                    }
+                &$_shuffle(\@ranges_) if (!&$_param('no-shuffle'));
+                }
+            }
+        }
+
+    # Use given length number to generate a pattern from a range
+    if (@ranges_ && $length =~ /^[0-9]+$/) {
+        $string .= join('', @ranges_[0 .. $length]);
+        }
+
+    # Use part of the pattern as literal
+    else {
+        $string .= $match;
+        }
+    }
+
+# Apply date/time substitutions if any
+if (&$_param('substitute-datetime')) {
+	my (@t, %tt) = (localtime(time()));
+    $tt{'year'} = $t[5] + 1900;
+    $tt{'month'} = sprintf("%2.2d", $t[4] + 1);
+    $tt{'day'} = sprintf("%2.2d", $t[3]);
+    $tt{'hour'} = sprintf("%2.2d", $t[2]);
+    $tt{'minute'} = sprintf("%2.2d", $t[1]);
+    $tt{'second'} = sprintf("%2.2d", $t[0]);
+    foreach my $t (keys %tt) {
+        $string =~ s/\$\{$t(?:(s))?\}/$tt{$t}/g;
+        }
+    }
+
+# Apply template substitutions
+if(&$_param('substitute-template') && ref(&$_param('substitute-hash')) eq 'HASH') {
+    my ($substitute_hash, $substitute_func) =
+         (&$_param('substitute-hash'), &$_param('substitute-func'));
+    if ($substitute_func) {
+        if ($substitute_func =~ /([\w]+)::([\w]+)/) {
+            if (!defined(&$substitute_func)) {
+                my $mmod = "$1";
+                $mmod =~ s/_/-/g;
+                &foreign_exists($mmod) && &foreign_require($mmod);
+                }
+            }
+        if (!defined(&$substitute_func)) {
+            $string = &substitute_template($string, $substitute_hash);
+            }
+        else {
+            $string = &$substitute_func($string, $substitute_hash);
+            }
+        }
+    else {
+        $string = &substitute_template($string, $substitute_hash);
+        }
+    }
+
+# Apply string filter
+my $params_filter = &$_param('filter');
+if ($params_filter) {
+    my $params_replace = &$_param('replace');
+    $string =~ s/$params_filter/$params_replace/g;
+    }
+
+# Apply string callback
+my $params_callback = &$_param('callback');
+if ($params_callback) {
+    $string = &$params_callback($string);
+    }
+return $string;
+}
+
 =head2 running_in_zone
 
 Returns 1 if the current Webmin instance is running in a Solaris zone. Used to
@@ -10763,16 +11592,15 @@ string.
 sub unix_crypt
 {
 my ($pass, $salt) = @_;
-return "" if ($salt !~ /^[a-zA-Z0-9\.\/]{2}/);   # same as real crypt
-my $rv = eval "crypt(\$pass, \$salt)";
-my $err = $@;
-return $rv if ($rv && !$@);
+return "" if ($salt !~ /^[\$a-zA-Z0-9]{2}/);   # same as real crypt
+my $rv = eval { crypt($pass, $salt) };
+return $rv if (!$@);
 eval "use Crypt::UnixCrypt";
 if (!$@) {
 	return Crypt::UnixCrypt::crypt($pass, $salt);
 	}
 else {
-	&error("Failed to encrypt password : $err");
+	&error("Failed to encrypt password : $@");
 	}
 }
 
@@ -11165,7 +11993,7 @@ if ($force ||
     !$main::connect_userdb_cache{$str} ||
     time() - $main::connect_userdb_cache_time{$str} > $timeout) {
 	if ($str =~ /^(mysql|postgresql):/) {
-		# DBI disconnnect
+		# DBI disconnect
 		if (!$h->{'AutoCommit'}) {
 			$h->commit();
 			}
@@ -11331,7 +12159,7 @@ return { 'type' => 'item',
          'link' => '/'.$minfo->{'dir'}.'/' };
 }
 
-=head2 list_combined_system_info(&data, &in)
+=head2 list_combined_system_info(&data, &in, [&modskip])
 
 Returns an array of objects, each representing a block of system information
 to display. Each is a hash ref with the following keys :
@@ -11407,20 +12235,22 @@ use where a system info block has a form that submits to itself.
 =cut
 sub list_combined_system_info
 {
-my ($data, $in) = @_;
+my ($data, $in, $modskip) = @_;
 &load_theme_library();
+$modskip ||= [];
 foreach my $m (&get_all_module_infos()) {
+	next if (&indexof($m->{'dir'}, @{$modskip}) > -1);
 	my $dir = &module_root_directory($m->{'dir'});
 	my $mfile = "$dir/system_info.pl";
 	next if (!-r $mfile);
 	&foreign_require($m->{'dir'}, "system_info.pl");
 	foreach my $i (&foreign_call($m->{'dir'}, "list_system_info",
-				     $data, $in)) {
+				     $data, $in, $modskip)) {
 		$i->{'module'} = $m->{'dir'};
 		push(@rv, $i);
 		}
 	}
-if (&foreign_available("webmin")) {
+if ((&indexof('webmin', @{$modskip}) == -1) && &foreign_available("webmin")) {
 	# Merge in old-style notification API
 	&foreign_require("webmin");
 	foreach my $n (&webmin::get_webmin_notifications()) {
@@ -11466,15 +12296,42 @@ if ($out =~ /GNU\s+bash/) {
 return 0;
 }
 
-=head2 compare_version_numbers(ver1, ver2)
+=head2 compare_version_numbers(ver1, ver2, [cmp])
 
-Compares to version "number" strings, and returns -1 if ver1 is older than ver2,
-0 if they are equal, or 1 if ver1 is newer than ver2.
+Compares two version "number" strings, and returns -1 if ver1 is
+older than ver2, 0 if they are equal, or 1 if ver1 is newer than
+ver2. If auxiliary cmp param is passed then comparison is done
+using friendly operators such as <, >, <=, >=, ==.
+
+Examples:
+	compare_version_numbers(4, "<=", 4);  # 1
+	compare_version_numbers(4, "<", 4);   # 0
+	compare_version_numbers(6, ">", 4);   # 1
+	compare_version_numbers(4, "==", 4);  # 1
 
 =cut
 sub compare_version_numbers
 {
-my ($ver1, $ver2) = @_;
+my ($ver1, $ver2, $cmp) = @_;
+
+if ($cmp) {
+	my $ver2_ = $cmp;
+	my $cmp_ = $ver2;
+	$ver2 = $ver2_;
+	$cmp = $cmp_;
+	my (@cmps) = ('<', '>', '<=', '>=', '==');
+	error("Comparison operator is not set. Supported operators are: @cmps")
+	  if (!$cmp);
+	error("Comparison operator $cmp is unknown. Supported operators are: @cmps")
+	  if (!grep(/^$cmp$/, @cmps));
+
+	return &compare_version_numbers($ver1, $ver2) == 0 if ($cmp eq '==');
+	return &compare_version_numbers($ver1, $ver2) >= 0 if ($cmp eq '>=');
+	return &compare_version_numbers($ver1, $ver2) <= 0 if ($cmp eq '<=');
+	return &compare_version_numbers($ver1, $ver2) > 0  if ($cmp eq '>');
+	return &compare_version_numbers($ver1, $ver2) < 0  if ($cmp eq '<');
+	}
+
 my @sp1 = split(/[\.\-\+\~\_]/, $ver1);
 my @sp2 = split(/[\.\-\+\~\_]/, $ver2);
 my $tmp;
@@ -11616,9 +12473,21 @@ sub get_referer_relative
 {
 my $referer = $ENV{'HTTP_REFERER'};
 my $prefix = $gconfig{'webprefix'};
+my $query_str = 'pass-query-string';
+my $query = $in{$query_str};
 $prefix = '/' if(!$prefix);
 $referer =~ s/http.*:\/\/.*?$prefix/\//;
 $referer =~ s/\/\//\//g;
+if ($query) {
+	my @pr;
+	my $pq = "?";
+	my $pq = "&"
+		if ($referer =~ /\?/);
+	map { push(@pr, "$_=$in{$_}")
+		if ($_ ne $query_str) } keys %in;
+	$referer .= "$pq".join('&', @pr)
+		if (@pr);
+}
 return $referer;
 }
 
@@ -11744,7 +12613,8 @@ return &has_command("python3") || &has_command("python30") ||
 
 =head2 get_buffer_size
 
-Returns the buffer size for read/write operations
+Returns the buffer size for read/write
+operations (def. 32 KiB)
 
 =cut
 sub get_buffer_size
@@ -11752,6 +12622,19 @@ sub get_buffer_size
 my %miniserv;
 &get_miniserv_config(\%miniserv);
 return $miniserv{'bufsize'} || 32768;
+}
+
+=head2 get_buffer_size_binary
+
+Returns the buffer size for read/write operations
+in uploads/downloads (def. ~ 6 MB)
+
+=cut
+sub get_buffer_size_binary
+{
+my %miniserv;
+&get_miniserv_config(\%miniserv);
+return $miniserv{'bufsize_binary'} || (65536 * 100);
 }
 
 =head2 get_webprefix
@@ -11790,6 +12673,388 @@ if (!$@) {
 	}
 }
 
+=head2 globals(action-type, variable-name, [[set-variable-value]|[get-scope-name]], [set-scope-name])
+
+Provides access to handle global variables all in one place internally allowing to
+differentiate the scope if needed. Must not be used directly. For internal use only
+
+=cut
+sub globals
+{
+my ($action, $variable, $value, $scope) = @_;
+state $globals;
+$scope = $value || 'main'
+	if ($action =~ /get|delete/ && defined($variable) && defined($value) && !$scope);
+$scope ||= 'main';
+
+if ($action eq 'set') {
+	$globals->{$scope}->{$variable} = $value
+		if (defined($variable) && defined($value));
+	}
+elsif ($action eq 'get' ||
+       $action eq 'got') {
+	if (defined($variable)) {
+		# Return single global variable in given scope
+		if (defined($globals->{$scope}) &&
+		    defined($globals->{$scope}->{$variable})) {
+			my $__ = $globals->{$scope}->{$variable};
+			globals('delete', $variable, $value, $scope)
+				if ($action eq 'got');
+			return $__;
+			}
+		else {
+			return;
+			}
+		}
+	}
+elsif ($action eq 'delete') {
+	if (defined($variable)) {
+		if ($variable eq '*') {
+			delete $globals->{$scope};
+		}
+		else {
+			# Remove single global variable in scope
+			delete $globals->{$scope}->{$variable};
+			if (!keys %{$globals->{$scope}}) {
+				delete $globals->{$scope};
+				}
+			}
+		}
+	else {
+		# Delete all registered globals
+		foreach (keys %{$globals}) {
+			delete $globals->{$_};
+			}
+		}
+	}
+
+# Always return a reference with all registered globals
+return $globals;
+}
+
+
+=head2 setvar(variable-name, variable-value, [scope-name])
+
+A wrapper function to set global variables using `globals` sub
+
+Examples:
+
+    Set variable in default "main" scope
+      - setvar('var-1', 'val-1');
+    Set variable in given "virtual-server" scope
+      - setvar('var-1', 'val-1', 'virtual-server');
+
+=cut
+sub setvar
+{
+my ($variable, $value, $scope) = @_;
+return &globals('set', $variable, $value, $scope);
+}
+
+=head2 getvar(variable-name, [scope-name], [get-and-unset])
+
+A wrapper function to get global variables using `globals` sub
+
+Examples:
+
+    Get variable value previously set on default "main" scope
+      - getvar('var-1');
+    Get variable value previously set on given "virtual-server" scope
+      - getvar('var-1', 'virtual-server');
+    Get and unset variable previously set on given "virtual-server" scope and delete immediately
+      - getvar('var-1', 'virtual-server', 'unset');
+
+=cut
+sub getvar
+{
+my ($variable, $scope, $unset) = @_;
+return &globals(($unset ? 'got' : 'get'), $variable, $scope);
+}
+
+=head2 delvar(variable-name, [scope-name])
+
+A wrapper function to delete global variables using `globals` sub
+
+Examples:
+    
+    Delete variable in default "main" scope
+      - delvar('var-1');
+
+    Delete variable in given "virtual-server" scope
+      - delvar('var-1', 'virtual-server');
+
+    Delete all variables in "main" scope
+      - delvar('*');
+
+    Delete all variables in given "virtual-server" scope
+      - delvar('*', 'virtual-server');
+
+    Delete all variables in all scopes
+      - delvar();
+
+
+=cut
+sub delvar
+{
+my ($variable, $scope) = @_;
+return &globals('delete', $variable, $scope);
+}
+
+# webmin_user_can_rpc()
+# Returns 1 if the given user can make remote calls
+sub webmin_user_can_rpc
+{
+my $u = $base_remote_user;
+my %access = &get_module_acl($u, "");
+return 1 if ($access{'rpc'} == 1);	# Can make arbitrary RPC calls
+return 0 if ($access{'rpc'} == 0);	# Cannot make RPCs
+
+# Assume that standard admin usernames
+# are root-capable as a fallback
+return $u eq 'root' ||
+       $u eq 'admin' ||
+       $u eq 'sysadm';
+}
+
+# webmin_user_login_mode()
+# Returns currently logged in user mode
+sub webmin_user_login_mode
+{
+# Default mode
+my $mode = 'root';
+
+# Check for foreign modules
+my $foreign_virtual_server
+    = &foreign_available("virtual-server");
+&foreign_require("virtual-server")
+    if ($foreign_virtual_server);
+my $foreign_server_manager
+    = &foreign_available("server-manager");
+&foreign_require("server-manager")
+    if ($foreign_server_manager);
+
+# Get current user and base user global permissions
+my %uaccess = &get_module_acl($remote_user, "");
+my %access = &get_module_acl($base_remote_user, "");
+
+# Check if mode must be restricted
+if ($base_remote_user !~ /^(root|admin|sysadm)$/) {
+	if ($uaccess{'_safe'} == 1 || $access{'_safe'} == 1 ||
+	    $uaccess{'rpc'} == 0 || $access{'rpc'} == 0) {
+			# Safe Webmin user
+	        $mode = 'safe-user';
+	    }
+    }
+if (&get_product_name() eq "usermin") {
+	# Usermin user
+    $mode = 'mail-user';
+    }
+if ($foreign_server_manager) {
+	# Cloudmin machine owner
+    $mode = 'cloud-owner'
+        if ($server_manager::access{'owner'});
+    }
+elsif ($foreign_virtual_server) {
+    $mode =
+      &virtual_server::reseller_admin() ?
+      	# Virtualmin reseller or owner
+        'virtual-reseller' : 'virtual-owner'
+            if (!&virtual_server::master_admin());
+    }
+return $mode;
+}
+
+# webmin_user_is_admin()
+# Returns 1 if currently logged in user is an admin
+sub webmin_user_is_admin
+{
+return &webmin_user_login_mode() eq 'root';
+}
+
+# webmin_user_is()
+# Returns 1 if currently logged in user belongs to one
+# of the requested types: root, safe-user, mail-user,
+# cloud-owner, virtual-owner, virtual-reseller
+# Simply a convenience wrapper function
+sub webmin_user_is
+{
+my ($user_type) = @_;
+
+# Test mode
+return &webmin_user_login_mode() eq $user_type;
+}
+
+# get_current_theme_info_cached([no-cache])
+# Returns cached theme info
+sub get_current_theme_info_cached
+{
+my ($nocache) = @_;
+state %current_theme_info;
+if (!%current_theme_info || $nocache) {
+	%current_theme_info = &get_theme_info($current_theme);
+	}
+return \%current_theme_info;
+}
+
+# miniserv_using_default_cert()
+# Returns 1 if miniserv is using one of the hard-coded certs
+sub miniserv_using_default_cert
+{
+return 0 if ($ENV{'HTTPS'} ne 'ON');
+my $defaultcertname = 'miniserv.pem';
+my $bundledcertfile = "$root_directory/$defaultcertname";
+my $currentcertfile = $ENV{'MINISERV_KEYFILE'};
+if (!$currentcertfile) {
+	my %miniserv;
+	&get_miniserv_config(\%miniserv);
+	$currentcertfile = $miniserv{'keyfile'};
+	}
+if (   $currentcertfile =~ /$defaultcertname$/ &&
+	-r $currentcertfile && -r $bundledcertfile) {
+	my $out;
+	&execute_command("md5sum ".quotemeta($currentcertfile), undef, \$out);
+	return 0 if ($?);
+	my ($md5) = split(/\s+/, $out);
+	return $md5 eq "fcc4fc2ba3c00ede7008725668ff3af9" ||
+	       $md5 eq "2bb1926297df3d0429be3a4cd00b43ce";
+	}
+return 0;
+}
+
+# is_int(float)
+# Tests if passed parameter is an integer number
+sub is_int
+{
+my ($int) = @_;
+if ($int =~ /^([-]?\d+)$/) {
+    return 1;
+    }
+return 0;
+}
+
+# float(number)
+# Parses float number and returns it or returns 0 if cannot
+sub float
+{
+my ($number) = @_;
+my $float = sprintf('%.2f', $number);
+if ($float == 0.00) {
+    return 0;
+    }
+return $float;
+}
+
+
+# is_float(float)
+# Tests if passed parameter is a float number
+sub is_float
+{
+my ($float) = @_;
+if ($float =~ /^[-]?(\.\d+|\d+\.\d+)$/) {
+    return 1;
+    }
+return 0;
+}
+
+# parse_accepted_language([&conf])
+# Returns the language requested by the browser
+sub parse_accepted_language
+{
+my ($conf) = @_;
+$conf ||= \%gconfig;
+my @langs = &list_languages();
+my $accepted_lang;
+if ($conf->{'acceptlang'}) {
+	foreach my $a (split(/,/, $ENV{'HTTP_ACCEPT_LANGUAGE'})) {
+		$a =~ s/;.*//;	# Remove ;q=0.5 or similar
+		my ($al) = grep { $_->{'lang'} eq $a } @langs;
+		if ($al) {
+			$accepted_lang = $al->{'lang'};
+			last;
+			}
+		}
+	}
+return $accepted_lang;
+}
+
+# get_default_system_locale()
+# Returns system default locale
+sub get_default_system_locale
+{
+my $locale_def = "en-US";
+my $locale_system;
+eval {
+	$locale_system = setlocale(LC_ALL);
+	};
+if (!$@ && $locale_system) {
+	$locale_system =~ s/\..*//;
+	$locale_system =~ s/_/-/;
+	my $locales = &list_locales();
+	return $locale_system
+		if ($locales->{$locale_system});
+	}
+return $locale_def;
+}
+
 $done_web_lib_funcs = 1;
+
+=head2 create_wrapper(wrapper-path, module, script)
+
+Creates a wrapper script which calls a script in some module's directory
+with the proper webmin environment variables set. This should always be used
+when setting up a cron job, instead of attempting to run a command in the
+module directory directly.
+
+The parameters are :
+
+=item wrapper-path - Full path to the wrapper to create, like /etc/webmin/yourmodule/foo.pl
+
+=item module - Module containing the real script to call.
+
+=item script - Program within that module for the wrapper to run.
+
+=cut
+
+sub create_wrapper
+{
+my ($path, $mod, $script) = @_;
+my $perl_path = &get_perl_path();
+&open_tempfile(CMD, ">$path");
+&print_tempfile(CMD, <<EOF
+#!$perl_path
+open(CONF, "<$config_directory/miniserv.conf") || die "Failed to open $config_directory/miniserv.conf : \$!";
+while(<CONF>) {
+        \$root = \$1 if (/^root=(.*)/);
+        }
+close(CONF);
+\$root || die "No root= line found in $config_directory/miniserv.conf";
+\$ENV{'PERLLIB'} = "\$root";
+\$ENV{'WEBMIN_CONFIG'} = "$ENV{'WEBMIN_CONFIG'}";
+\$ENV{'WEBMIN_VAR'} = "$ENV{'WEBMIN_VAR'}";
+delete(\$ENV{'MINISERV_CONFIG'});
+EOF
+    );
+if ($gconfig{'os_type'} eq 'windows') {
+    # On windows, we need to chdir to the drive first, and use system
+    &print_tempfile(CMD, "if (\$root =~ /^([a-z]:)/i) {\n");
+    &print_tempfile(CMD, "       chdir(\"\$1\");\n");
+    &print_tempfile(CMD, "       }\n");
+    &print_tempfile(CMD, "chdir(\"\$root/$mod\");\n");
+    &print_tempfile(CMD, "exit(system(\"\$root/$mod/$script\", \@ARGV));\n");
+    }
+else {
+    # Can use exec on Unix systems
+    if ($mod) {
+        &print_tempfile(CMD, "chdir(\"\$root/$mod\");\n");
+        &print_tempfile(CMD, "exec(\"\$root/$mod/$script\", \@ARGV) || die \"Failed to run \$root/$mod/$script : \$!\";\n");
+        }
+    else {
+        &print_tempfile(CMD, "chdir(\"\$root\");\n");
+        &print_tempfile(CMD, "exec(\"\$root/$script\", \@ARGV) || die \"Failed to run \$root/$script : \$!\";\n");
+        }
+    }
+&close_tempfile(CMD);
+chmod(0755, $path);
+}
 
 1;

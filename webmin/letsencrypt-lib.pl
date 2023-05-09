@@ -57,16 +57,20 @@ return &software::missing_install_link(
 }
 
 # request_letsencrypt_cert(domain|&domains, webroot, [email], [keysize],
-# 			   [request-mode], [use-staging], [account-email])
+# 			   [request-mode], [use-staging], [account-email],
+# 			   [reuse-key])
 # Attempt to request a cert using a generated key with the Let's Encrypt client
 # command, and write it to the given path. Returns a status flag, and either
 # an error message or the paths to cert, key and chain files.
 sub request_letsencrypt_cert
 {
-my ($dom, $webroot, $email, $size, $mode, $staging, $account_email) = @_;
+my ($dom, $webroot, $email, $size, $mode, $staging, $account_email,
+    $key_type, $reuse_key) = @_;
 my @doms = ref($dom) ? @$dom : ($dom);
 $email ||= "root\@$doms[0]";
 $mode ||= "web";
+@doms = &unique(@doms);
+$reuse_key = $config{'letsencrypt_reuse'} if (!defined($reuse_key));
 my ($challenge, $wellknown, $challenge_new, $wellknown_new, $wildcard);
 
 # Wildcard mode?
@@ -163,9 +167,18 @@ if ($letsencrypt_cmd) {
 	&close_tempfile(TEMP);
 	my $dir = $letsencrypt_cmd;
 	my $cmd_ver = &get_certbot_major_version($letsencrypt_cmd);
-	my $old_flags;
-	if ($cmd_ver < 1.11) {
+	my $old_flags = "";
+	my $new_flags = "";
+	my $reuse_flags = "";
+	$key_type ||= $config{'letsencrypt_algo'} || 'rsa';
+	if (&compare_version_numbers($cmd_ver, 1.11) < 0) {
 		$old_flags = " --manual-public-ip-logging-ok";
+		}
+	if (&compare_version_numbers($cmd_ver, 2.0) >= 0) {
+		$new_flags = " --key-type ".quotemeta($key_type);
+		}
+	if ($reuse_key) {
+		$reuse_flags = " --reuse-key";
 		}
 	$dir =~ s/\/[^\/]+$//;
 	$size ||= 2048;
@@ -173,18 +186,20 @@ if ($letsencrypt_cmd) {
 	if ($mode eq "web") {
 		# Webserver based validation
 		&clean_environment();
-		$out = &backquote_command(
+		$out = &backquote_logged(
 			"cd $dir && (echo A | $letsencrypt_cmd certonly".
 			" -a webroot ".
 			join("", map { " -d ".quotemeta($_) } @doms).
 			" --webroot-path ".quotemeta($webroot).
 			" --duplicate".
 			" --force-renewal".
-			"$old_flags".
+			$reuse_flags.
+			$old_flags.
 			" --non-interactive".
 			" --agree-tos".
-			" --config $temp".
-			" --rsa-key-size $size".
+			" --config ".quotemeta($temp)."".
+			$new_flags.
+			" --rsa-key-size ".quotemeta($size).
 			" --cert-name ".quotemeta($doms[0]).
 			($staging ? " --test-cert" : "").
 			" 2>&1)");
@@ -193,7 +208,7 @@ if ($letsencrypt_cmd) {
 	elsif ($mode eq "dns") {
 		# DNS based validation, via hook script
 		&clean_environment();
-		$out = &backquote_command(
+		$out = &backquote_logged(
 			"cd $dir && (echo A | $letsencrypt_cmd certonly".
 			" --manual".
 			join("", map { " -d ".quotemeta($_) } @doms).
@@ -202,10 +217,12 @@ if ($letsencrypt_cmd) {
 			" --manual-cleanup-hook $cleanup_hook".
 			" --duplicate".
 			" --force-renewal".
-			"$old_flags".
+			$reuse_flags.
+			$old_flags.
 			" --non-interactive".
 			" --agree-tos".
-			" --config $temp".
+			" --config ".quotemeta($temp)."".
+			$new_flags.
 			" --rsa-key-size $size".
 			" --cert-name ".quotemeta($doms[0]).
 			($staging ? " --test-cert" : "").
@@ -221,7 +238,7 @@ if ($letsencrypt_cmd) {
 		goto FAILED;
 		}
 	my ($full, $cert, $key, $chain);
-	if ($out =~ /(\/etc\/letsencrypt\/(?:live|archive)\/[a-zA-Z0-9\.\_\-\/\r\n\* ]*\.pem)/) {
+	if ($out =~ /((?:\/usr\/local)?\/etc\/letsencrypt\/(?:live|archive)\/[a-zA-Z0-9\.\_\-\/\r\n\* ]*\.pem)/) {
 		# Output contained the full path
 		$full = $1;
 		$full =~ s/\s//g;
@@ -293,7 +310,7 @@ else {
 
 	# Generate a key for the domain
 	my $key = &transname();
-	my $out = &backquote_logged("openssl genrsa $size 2>&1 >$key");
+	my $out = &backquote_logged("openssl genrsa $size 2>&1 >".quotemeta($key)."");
 	if ($?) {
 		@rv = (0, &text('letsencrypt_ekeygen', &html_escape($out)));
 		goto FAILED;
@@ -322,7 +339,7 @@ else {
 		($mode eq "web" ? "--acme-dir ".quotemeta($challenge)." "
 				: "--dns-hook $dns_hook ".
 				  "--cleanup-hook $cleanup_hook ").
-		($staging ? "--ca https://acme-staging.api.letsencrypt.org "
+		($staging ? "--ca https://acme-staging-v02.api.letsencrypt.org "
 			  : "--disable-check ").
 		"--quiet ".
 		"2>&1 >".quotemeta($cert));

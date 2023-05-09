@@ -7,13 +7,13 @@ index_applydesc=Haga clic en este botón para activar la configuración del fire
 index_restart=Aplicar configuración
 index_restartdesc=Active todos los servicios y puertos permitidos enumerados anteriormente, en todas las zonas. Cualquier regla activa que no se haya creado permanentemente será reemplazada.
 index_start=Iniciar FirewallD
-index_startdesc=Inicie el servidor FirewallD y aplique las reglas enumeradas anteriormente.
+index_startdesc=Inicie el servidor FirewallD.
 index_stop=Stop FirewallD
 index_stopdesc=Cierre el servidor FirewallD y elimine todas las reglas enumeradas anteriormente.
 index_cerr=El módulo FirewallD no se puede usar : $1 
 index_zone=Mostrar reglas en zona:
 index_zoneok=Cambio
-index_zoneadd=Añadir zona ..
+index_zoneadd=Agregar Zona
 index_zonedel=Eliminar zona
 index_zonedef=Hacer por defecto
 index_type=Tipo de regla
@@ -30,6 +30,14 @@ index_return=lista de zonas
 index_ezones=¡No se encontraron zonas de FirewallD!
 index_none=Esta zona aún no tiene puertos o servicios permitidos.
 index_ifaces=Aplicar reglas a las interfaces:
+index_ifaces_def=Todas las interfaces
+index_ifaces_sel=Interfaces seleccionadas:
+index_ifaces_apply=Aplicar
+index_listrules=Lista de reglas de FirewallD
+index_restart_firewalld=Recargar FirewallD
+index_restart_firewallddesc=Vuelva a cargar el servidor FirewallD y aplique las reglas que se crearon de forma permanente.
+index_listrules_restartdesc=Enumere los detalles sobre las reglas FirewallD enriquecidas y directas existentes en la zona $1.
+index_dependent=No se pudo reiniciar el servicio dependiente de $1
 
 port_edit=Editar puerto
 port_create=Agregar puerto
@@ -90,6 +98,22 @@ delzone_edefault=La zona predeterminada no se puede eliminar.
 delzone_rusure=¿Está seguro de que desea eliminar la zona $1, que contiene $2 puertos y $3 servicios?
 
 defzone_err=Error al establecer la zona como predeterminada
+
+list_rule_iperr=Dirección IP inválida
+list_rule_actionerr=Acción no válida
+list_rules_title=Reglas de FirewallD
+list_rules_title_sub=en la zona $1
+list_rules_delete=Eliminar reglas seleccionadas
+list_rules_type=Tipo
+list_rules_type_rich=Rico
+list_rules_type_direct=Directo
+list_rules_protocol=Protocolo
+list_rules_ip=IP
+list_rules_origin=Origen
+list_rules_action=Acción
+list_rules_rule=Regla
+list_rules_plus_more=+ $1 más
+log_save_rules=$1 reglas eliminadas
 
 restart_err=Error al aplicar la configuración
 

@@ -3,6 +3,8 @@
 # Apply changes to one zone only using the ndc command
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in);  
 
 require './bind8-lib.pl';
@@ -28,8 +30,4 @@ if ($? || $out =~ /failed|not found|error/i) {
 	}
 &webmin_log("thaw", $dom);
 
-my $tv = $zone->{'type'};
-&redirect(($tv eq "master" ? "edit_master.cgi" :
-	  $tv eq "forward" ? "edit_forward.cgi" : "edit_slave.cgi").
-	  "?zone=$in{'zone'}&view=$in{'view'}");
-
+&redirect(&redirect_url($zone->{'type'}, $in{'zone'}, $in{'view'}));

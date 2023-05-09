@@ -7,6 +7,10 @@ bind_maxconns_per_net=Sambungan serentak maksimum setiap rangkaian
 bind_emaxconns=Sambungan serentak maksimum mestilah nombor lebih besar daripada 1
 bind_emaxconns_per_ip=Sambungan serentak maksimum per IP mestilah bilangan yang lebih besar daripada 1
 bind_emaxconns_per_net=Sambungan serentak maksimum setiap rangkaian mestilah nombor yang lebih besar daripada 1
+bind_maxlifetime=Proses Webmin maksimum sepanjang hayat
+bind_maxlifetime_def=Tidak terhad
+bind_maxlifetime_secs=detik
+bind_emaxlifetime=Jangka hayat proses maksimum mestilah nombor yang lebih besar daripada 60 saat
 
 log_global=&lt;Tindakan global&gt;
 log_sched=Fungsi berjadual log?
@@ -19,8 +23,17 @@ ui_nice_size_type=Gunakan unit pengukuran binari (KiB, MiB, GiB daripada KB, MB,
 mods_checksig=Periksa fail tandatangan untuk modul yang dimuat turun?
 
 os_incorrect=Sistem operasi $1 telah ditingkatkan ke versi $2 
+os_release_notes=Nota keluaran
+
+lang_title=Bahasa dan Tempatan
+lang_title2=Bahasa dan Tempatan Webmin
+lang_lang=Bahasa
+lang_locale=Tempatan
+lang_dateformat=Format paparan tarikh
+lang_dateformat_dd/mon/yyyy=hb/mon/tttt (iaitu 16/Sep/2001)
 
 ssl_deny=Versi protokol SSL untuk menolak
+ssl_hsts=Kuatkuasakan SSL dengan pengepala HSTS
 ssl_ekey2=Fail kunci peribadi SSL $1 tidak mengandungi kekunci format PEM
 ssl_ecert2=Fail sijil SSL $1 tidak mengandungi sijil format PEM
 ssl_edhparams=Gagal untuk menjana fail Parameter DH PFS : $1
@@ -49,6 +62,10 @@ ssl_staging1=Pementasan (ujian sahaja)
 
 newkey_ecns=Tiada nama pelayan yang dimasukkan
 
+upgrade_setup=Menjalankan skrip <tt>setup.sh</tt> untuk menaik taraf Webmin ..
+upgrade_setuprpm=Menjalankan <tt>RPM</tt> untuk menaik taraf Webmin ..
+upgrade_setupdeb=Menjalankan <tt>DPKG</tt> untuk menaik taraf Webmin ..
+upgrade_setuppackage=Menjalankan <tt>pkgadd</tt> untuk menaik taraf Webmin ..
 upgrade_eportage=Ciri naik taraf Webmin tidak berfungsi saat ini apabila anda memasang dari pakej Portage. Sila naik taraf menggunakan alat Portage sebaliknya.
 
 ca_alt=Domain tambahan
@@ -66,8 +83,13 @@ session_popts=Pilihan kata laluan
 session_cmddef=Perubahan kata laluan yang telah tamat tempoh
 session_banner=Spanduk pra-masuk
 session_md5=Format hashing kata laluan Webmin
-session_sha512=Gunakan penyulitan SHA512
-session_esha512mod=Penyulitan SHA512 tidak boleh digunakan, kerana mod Perl $1 tidak dipasang.
+session_md5off=Tentukan secara automatik
+session_md5on=Gunakan format pencincangan <tt>MD5</tt>
+session_sha512=Gunakan format pencincangan <tt>SHA512</tt>
+session_yescrypt=Gunakan format pencincangan <tt>yescrypt</tt>
+session_emd5mod=Format pencincangan MD5 tidak boleh digunakan, kerana modul Perl $1 tidak dipasang
+session_esha512mod=Format pencincangan SHA512 tidak boleh digunakan, kerana modul Perl $1 tidak dipasang
+session_eyescrypt=format pencincangan yescrypt tidak boleh digunakan, kerana modul Perl $1 tidak dipasang
 session_passapi=Dayakan API pertukaran kata laluan jauh?
 session_passapi0=API dilumpuhkan
 session_passapi1=API diaktifkan untuk pengguna Unix
@@ -82,6 +104,7 @@ referers_none2=AMARAN: Ini membuka sistem anda sehingga serangan XSS!
 ipkey_ips2=Untuk alamat IP dan nama host
 ipkey_eip2='$1' bukan alamat IP atau nama hos yang sah
 
+advanced_etempallowed=Direktori fail sementara $1 ialah direktori sistem
 advanced_listdir=Senarai direktori tanpa fail indeks?
 advanced_headers=Tajuk tambahan HTTP
 advanced_eheader=Tajuk mesti diformat seperti <tt>Tajuk: Nilai</tt>
@@ -107,6 +130,17 @@ sendmail_url=URL Webmin untuk digunakan dalam e-mel
 sendmail_url_def=Lalai ($1)
 sendmail_url_custom=URL tersuai
 sendmail_eurl=URL tersuai tidak ada atau tidak sah
+
+web_rediruurl=URL ubah hala suis selepas log masuk
+web_redirdesc=URL ubah hala dalaman menimpa
+web_eredirurl='$1' mengandungi ruang dan bukan URL yang sah
+web_redirhost=Ubah hala hos
+web_eredirhost='$1' bukan nama hos yang sah
+web_redirport=Ubah hala pelabuhan
+web_redirpref=Awalan ubah hala
+web_eredirpref=Awalan mesti bermula dengan garis miring ke hadapan
+web_eredirpref2=Awalan tidak boleh mengandungi ruang
+web_redirssl=Ubah hala SSL
 
 twofactor_eusers=Pengesahan dua faktor tidak boleh dilumpuhkan, kerana pengguna berikut kini mendaftar : $1
 

@@ -10,6 +10,10 @@ bind_maxconns_per_net=Maximaal aantal gelijktijdige verbindingen per netwerk
 bind_emaxconns=Het maximum aantal gelijktijdige verbindingen moet een getal zijn dat groter is dan 1
 bind_emaxconns_per_ip=Het maximum aantal gelijktijdige verbindingen per IP moet een getal zijn dat groter is dan 1
 bind_emaxconns_per_net=Het maximum aantal gelijktijdige verbindingen per netwerk moet een getal zijn dat groter is dan 1
+bind_maxlifetime=Maximale levensduur van het Webmin-proces
+bind_maxlifetime_def=Onbeperkt
+bind_maxlifetime_secs=seconden
+bind_emaxlifetime=Maximale proceslevensduur moet groter zijn dan 60 seconden
 
 log_global=&lt;Wereldwijde acties&gt;
 log_sched=Geplande functies loggen?
@@ -22,11 +26,20 @@ ui_nice_size_type=Gebruik binaire maateenheden (KiB, MiB, GiB in plaats van KB, 
 mods_checksig=Controleer het handtekeningbestand voor gedownloade modules?
 
 os_incorrect=Besturingssysteem $1 is geüpgraded naar versie $2
+os_release_notes=Release-opmerkingen
 os_usermin=Update ook Usermin OS
+
+lang_title=Taal en land
+lang_title2=Webmin-taal en locale
+lang_lang=Taal
+lang_locale=Lokaal
+lang_dateformat=Datumweergaveformaat
+lang_dateformat_dd/mon/yyyy=dd/ma/jjjj (d.w.z. 16/sep/2001)
 
 ssl_deny=Te weigeren SSL-protocolversies
 ssl_compression=Gecomprimeerde SSL-verbindingen toestaan?
 ssl_honorcipherorder=Gebruik van door de server gedefinieerde codeervolgorde forceren?
+ssl_hsts=SSL afdwingen met HSTS-header
 ssl_ekey2=Het SSL-sleutelbestand $1 bevat geen sleutel in PEM-indeling
 ssl_ecert2=Het SSL-certificaatbestand $1 bevat geen certificaat in PEM-formaat
 ssl_pfs=Alleen sterke cijfers met perfecte voorwaartse geheimhouding
@@ -56,6 +69,10 @@ ssl_staging1=Staging (alleen test)
 
 newkey_ecns=Geen servernamen ingevoerd
 
+upgrade_setup=<tt>setup.sh</tt> script uitvoeren om Webmin te upgraden ..
+upgrade_setuprpm=<tt>RPM</tt> uitvoeren om Webmin te upgraden ..
+upgrade_setupdeb=<tt>DPKG</tt> uitvoeren om Webmin te upgraden ..
+upgrade_setuppackage=<tt>pkgadd</tt> uitvoeren om Webmin te upgraden ..
 upgrade_eportage=De upgrade-functie van Webmin werkt momenteel niet wanneer u hebt geïnstalleerd vanuit een Portage-pakket. Voer in plaats daarvan een upgrade uit met de Portage-tools.
 upgrade_src=Webmin upgraden van
 upgrade_opts=Upgrade opties
@@ -78,8 +95,13 @@ session_popts=Wachtwoord opties
 session_cmddef=Verlopen wachtwoordwijziging
 session_banner=Pre-login banner
 session_md5=Webmin wachtwoord hashing-formaat
-session_sha512=Gebruik SHA512-codering
-session_esha512mod=SHA512-codering kan niet worden gebruikt, omdat de module Perl $1 niet is geïnstalleerd.
+session_md5off=Automatisch bepalen
+session_md5on=Gebruik <tt>MD5</tt> hash-indeling
+session_sha512=Gebruik <tt>SHA512</tt> hash-indeling
+session_yescrypt=Gebruik <tt>yescrypt</tt> hash-indeling
+session_emd5mod=MD5-hash-indeling kan niet worden gebruikt, omdat de Perl $1-module niet is geïnstalleerd
+session_esha512mod=SHA512 hash-indeling kan niet worden gebruikt, omdat de Perl $1-module niet is geïnstalleerd
+session_eyescrypt=yescrypt hash-formaat kan niet worden gebruikt, omdat de Perl $1-module niet is geïnstalleerd
 session_passapi=API voor wachtwoordwijziging op afstand inschakelen?
 session_passapi0=API uitgeschakeld
 session_passapi1=API ingeschakeld voor Unix-gebruikers
@@ -101,6 +123,7 @@ referers_none2=WAARSCHUWING: Dit stelt uw systeem open voor XSS-aanvallen!
 ipkey_ips2=Voor IP-adressen en hostnamen
 ipkey_eip2='$1' is geen geldig IP-adres of hostnaam
 
+advanced_etempallowed=Tijdelijke bestanden directory $1 is een systeemdirectory
 advanced_redir=URL-indeling voor omleidingen
 advanced_redir1=Alleen pad
 advanced_redir0=Protocol, host, poort en pad
@@ -146,6 +169,17 @@ testmail_eto=Geen bestemmingsadres ingevoerd
 testmail_sending=Bericht verzenden van $1 naar $2 ..
 testmail_done=.. bericht verzonden. Controleer de mailbox van het bestemmingsadres om te controleren of het daadwerkelijk is afgeleverd.
 testmail_failed=.. verzenden mislukt : $1
+
+web_rediruurl=Omleidings-URL na inloggen overschakelen
+web_redirdesc=Interne omleidings-URL overschrijft
+web_eredirurl='$1' bevat spaties en is geen geldige URL
+web_redirhost=Host omleiden
+web_eredirhost='$1' is geen geldige hostnaam
+web_redirport=Omleidingspoort
+web_redirpref=Omleidingsvoorvoegsel
+web_eredirpref=Voorvoegsel moet beginnen met slash
+web_eredirpref2=Voorvoegsel mag geen spaties bevatten
+web_redirssl=SSL omleiden
 
 webmincron_title=Geplande Webmin-functies
 webmincron_emodule=De Webmin Cron Jobs-module is niet geïnstalleerd!

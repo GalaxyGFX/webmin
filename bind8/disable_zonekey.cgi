@@ -2,6 +2,8 @@
 # Remove the signing key records for a zone
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in);
 
 require './bind8-lib.pl';
@@ -22,7 +24,7 @@ if ($key) {
 foreach my $k (@keyfiles) {
 	&lock_file($k);
 	}
-&delete_dnssec_key($zone);
+&delete_dnssec_key($zone, $in{'keep'});
 foreach my $k (@keyfiles) {
 	&unlock_file($k);
 	}

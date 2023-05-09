@@ -8,11 +8,12 @@ require './webmin-lib.pl';
 
 &lock_file($ENV{'MINISERV_CONFIG'});
 &get_miniserv_config(\%miniserv);
+$sslcurr = $miniserv{'ssl'};
 $miniserv{'ssl'} = $in{'ssl'};
+$miniserv{'ssl_hsts'} = ($in{'ssl'} && $in{'ssl_hsts'}) ? 1 : 0;
 &validate_key_cert($in{'key'}, $in{'cert_def'} ? undef : $in{'cert'});
 $miniserv{'keyfile'} = $in{'key'};
 $miniserv{'certfile'} = $in{'cert_def'} ? undef : $in{'cert'};
-$miniserv{'ssl_redirect'} = $in{'ssl_redirect'};
 $miniserv{'no_sslcompression'} = !$in{'ssl_compression'};
 $miniserv{'ssl_honorcipherorder'} = $in{'ssl_honorcipherorder'};
 if ($in{'version_def'}) {
@@ -71,7 +72,25 @@ $SIG{'TERM'} = 'IGNORE';	# stop process from being killed by restart
 &restart_miniserv();
 &webmin_log("ssl", undef, undef, \%in);
 
-$url = "$ENV{'SERVER_NAME'}:$miniserv{'port'}/webmin/";
-if ($in{'ssl'}) { &redirect("https://$url"); }
-else { &redirect("http://$url"); }
+if (!$miniserv{'ssl_hsts'}) {
+	# Tell browser to unset HSTS policy to make non-SSL URL work 
+	print "Strict-Transport-Security: max-age=0;\n";
+	}
 
+$url = ($in{'ssl'} ? "https://" : "http://") .
+            "$ENV{'SERVER_NAME'}:$miniserv{'port'}";
+if ($sslcurr != $miniserv{'ssl'}) {
+	%tinfo = &get_theme_info($current_theme);
+	if ($tinfo{'spa'} && $tinfo{'nomodcall'}) {
+		$url .= "@{[&get_webprefix()]}/webmin/?$tinfo{'nomodcall'}";
+		}
+	&ui_print_header(undef, $text{'ssl_title'}, "", undef, undef, 1);
+	print $text{'ssl_redirect'},"<br>\n";
+	print "<script>\n";
+	print "top.location = '$url';\n";
+	print "</script>\n";
+	&ui_print_footer();
+	}
+else {
+	&redirect("");
+	}

@@ -9,6 +9,7 @@ use Time::Local;
 eval "use Time::HiRes;";
 
 @itoa64 = split(//, "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+@miniserv_argv = @ARGV;
 
 # Find and read config file
 if ($ARGV[0] eq "--nofork") {
@@ -26,9 +27,12 @@ else {
 	$config_file = "$pwd/$ARGV[0]";
 	}
 %config = &read_config_file($config_file);
+$ENV{'LIBROOT'} = $config{'root'};
 if ($config{'perllib'}) {
 	push(@INC, split(/:/, $config{'perllib'}));
+	push(@INC, "$config{'root'}/vendor_perl");
 	$ENV{'PERLLIB'} .= ':'.$config{'perllib'};
+	$ENV{'PERLLIB'} .= ':'."$config{'root'}/vendor_perl";
 	}
 @startup_msg = ( );
 
@@ -64,7 +68,7 @@ if ($config{'ipv6'}) {
 	}
 
 # Check if the syslog module is available to log hacking attempts
-if ($config{'syslog'} && !$config{'inetd'}) {
+if ($config{'syslog'}) {
 	eval "use Sys::Syslog qw(:DEFAULT setlogsock)";
 	if (!$@) {
 		$use_syslog = 1;
@@ -113,7 +117,6 @@ if (!-x $perl_path) {
 if (-l $perl_path) {
 	$linked_perl_path = readlink($perl_path);
 	}
-@miniserv_argv = @ARGV;
 
 # Check vital config options
 &update_vital_config();
@@ -129,8 +132,6 @@ if (open(PIDFILE, $config{'pidfile'})) {
 	}
 
 $sidname = $config{'sidname'};
-die "Session authentication cannot be used in inetd mode"
-	if ($config{'inetd'} && $config{'session'});
 
 # check if the PAM module is available to authenticate
 if ($config{'assume_pam'}) {
@@ -270,43 +271,10 @@ elsif ($config{'certfile'} && !-r $config{'certfile'}) {
 	print STDERR "SSL cert file $config{'certfile'} does not exist\n";
 	$use_ssl = 0;
 	}
-@ipkeys = &get_ipkeys(\%config);
 if ($use_ssl) {
-	if ($config{'ssl_version'}) {
-		# Force an SSL version
-		$Net::SSLeay::version = $config{'ssl_version'};
-		$Net::SSLeay::ssl_version = $config{'ssl_version'};
-		}
 	$client_certs = 0 if (!-r $config{'ca'} || !%certs);
-	$ctx = &create_ssl_context($config{'keyfile'},
-				   $config{'certfile'},
-				   $config{'extracas'});
-	$ctx || die "Failed to create default SSL context";
-	$ssl_contexts{"*"} = $ctx;
-	foreach $ipkey (@ipkeys) {
-		$ctx = &create_ssl_context($ipkey->{'key'}, $ipkey->{'cert'},
-				   $ipkey->{'extracas'} || $config{'extracas'});
-		if ($ctx) {
-			foreach $ip (@{$ipkey->{'ips'}}) {
-				$ssl_contexts{$ip} = $ctx;
-				}
-			}
-		}
-
-	# Setup per-hostname SSL contexts on the main IP
-	if (defined(&Net::SSLeay::CTX_set_tlsext_servername_callback)) {
-		Net::SSLeay::CTX_set_tlsext_servername_callback(
-		    $ssl_contexts{"*"},
-		    sub {
-			my $ssl = shift;
-			my $h = Net::SSLeay::get_servername($ssl);
-			my $c = $ssl_contexts{$h} ||
-				$h =~ /^[^\.]+\.(.*)$/ && $ssl_contexts{"*.$1"};
-			if ($c) {
-				Net::SSLeay::set_SSL_CTX($ssl, $c);
-				}
-			});
-		}
+	$err = &setup_ssl_contexts();
+	die $err if ($err);
 	}
 
 # Load gzip library if enabled
@@ -316,6 +284,9 @@ if ($config{'gzip'} eq '1') {
 		$use_gzip = 1;
 		}
 	}
+
+# Read websockets configs
+&parse_websockets_config();
 
 # Setup syslog support if possible and if requested
 if ($use_syslog) {
@@ -327,7 +298,9 @@ if ($use_syslog) {
 		$use_syslog = 0;
 		}
 	else {
-		local $msg = ucfirst($config{'pam'})." starting";
+		local $msg = ucfirst($config{'pam'});
+		$msg .= $ENV{'STARTED'}++ ?
+		    " reloaded configuration" : " starting";
 		eval { syslog("info", "%s", $msg); };
 		if ($@) {
 			eval {
@@ -380,33 +353,31 @@ if ($config{'extauth'}) {
 	}
 
 # Pre-load any libraries
-if (!$config{'inetd'}) {
-	foreach $pl (split(/\s+/, $config{'preload'})) {
-		($pkg, $lib) = split(/=/, $pl);
-		$pkg =~ s/[^A-Za-z0-9]/_/g;
-		eval "package $pkg; do '$config{'root'}/$lib'";
-		if ($@) {
-			print STDERR "Failed to pre-load $lib in $pkg : $@\n";
-			}
+foreach $pl (split(/\s+/, $config{'preload'})) {
+	($pkg, $lib) = split(/=/, $pl);
+	$pkg =~ s/[^A-Za-z0-9]/_/g;
+	eval "package $pkg; do '$config{'root'}/$lib'";
+	if ($@) {
+		print STDERR "Failed to pre-load $lib in $pkg : $@\n";
 		}
-	foreach $pl (split(/\s+/, $config{'premodules'})) {
-		if ($pl =~ /\//) {
-			($dir, $mod) = split(/\//, $pl);
-			}
-		else {
-			($dir, $mod) = (undef, $pl);
-			}
-		push(@INC, "$config{'root'}/$dir");
-		eval "package $mod; use $mod ()";
-		if ($@) {
-			print STDERR "Failed to pre-load $mod : $@\n";
-			}
+	}
+foreach $pl (split(/\s+/, $config{'premodules'})) {
+	if ($pl =~ /\//) {
+		($dir, $mod) = split(/\//, $pl);
 		}
-	foreach $mod (split(/\s+/, $config{'preuse'})) {
-		eval "use $mod;";
-		if ($@) {
-			print STDERR "Failed to pre-load $mod : $@\n";
-			}
+	else {
+		($dir, $mod) = (undef, $pl);
+		}
+	push(@INC, "$config{'root'}/$dir");
+	eval "package $mod; use $mod ()";
+	if ($@) {
+		print STDERR "Failed to pre-load $mod : $@\n";
+		}
+	}
+foreach $mod (split(/\s+/, $config{'preuse'})) {
+	eval "use $mod;";
+	if ($@) {
+		print STDERR "Failed to pre-load $mod : $@\n";
 		}
 	}
 
@@ -433,71 +404,6 @@ if ($config{'debuglog'}) {
 unlink($config{'restartflag'}) if ($config{'restartflag'});
 unlink($config{'reloadflag'}) if ($config{'reloadflag'});
 unlink($config{'stopflag'}) if ($config{'stopflag'});
-
-if ($config{'inetd'}) {
-	# We are being run from inetd - go direct to handling the request
-	&redirect_stderr_to_log();
-	$SIG{'HUP'} = 'IGNORE';
-	$SIG{'TERM'} = 'DEFAULT';
-	$SIG{'PIPE'} = 'DEFAULT';
-	open(SOCK, "+>&STDIN");
-
-	# Check if it is time for the logfile to be cleared
-	if ($config{'logclear'}) {
-		local $write_logtime = 0;
-		local @st = stat("$config{'logfile'}.time");
-		if (@st) {
-			if ($st[9]+$config{'logtime'}*60*60 < time()){
-				# need to clear log
-				$write_logtime = 1;
-				unlink($config{'logfile'});
-				}
-			}
-		else { $write_logtime = 1; }
-		if ($write_logtime) {
-			open(LOGTIME, ">$config{'logfile'}.time");
-			print LOGTIME time(),"\n";
-			close(LOGTIME);
-			}
-		}
-
-	# Work out if IPv6 is being used locally
-	local $sn = getsockname(SOCK);
-	print DEBUG "sn=$sn\n";
-	print DEBUG "length=",length($sn),"\n";
-	$localipv6 = length($sn) > 16;
-	print DEBUG "localipv6=$localipv6\n";
-
-	# Initialize SSL for this connection
-	if ($use_ssl) {
-		$ssl_con = &ssl_connection_for_ip(SOCK, $localipv6);
-		$ssl_con || exit;
-		}
-
-	# Work out the hostname for this web server
-	$host = &get_socket_name(SOCK, $localipv6);
-	print DEBUG "host=$host\n";
-	$host || exit;
-	$port = $config{'port'};
-	$acptaddr = getpeername(SOCK);
-	print DEBUG "acptaddr=$acptaddr\n";
-	print DEBUG "length=",length($acptaddr),"\n";
-	$acptaddr || exit;
-
-	# Work out remote and local IPs
-	$ipv6 = length($acptaddr) > 16;
-	print DEBUG "ipv6=$ipv6\n";
-	(undef, $locala) = &get_socket_ip(SOCK, $localipv6);
-	print DEBUG "locala=$locala\n";
-	(undef, $peera, undef) = &get_address_ip($acptaddr, $ipv6);
-	print DEBUG "peera=$peera\n";
-
-	print DEBUG "main: Starting handle_request loop pid=$$\n";
-	while(&handle_request($peera, $locala, $ipv6)) { }
-	print DEBUG "main: Done handle_request loop pid=$$\n";
-	close(SOCK);
-	exit;
-	}
 
 # Build list of sockets to listen on
 @listening_on_ports = ();
@@ -782,6 +688,19 @@ while(1) {
 		}
 	local $time_now = time();
 
+	# Clean up processes that have been idle for too long, if configured
+	if ($config{'maxlifetime'}) {
+		foreach my $c (@childpids) {
+			my $age = time() - $childstarts{$c};
+			if ($childstarts{$c} &&
+			    $age > $config{'maxlifetime'}) {
+				kill(9, $c);
+				print STDERR "Killing long-running process $c after $age sconds\n";
+				delete($childstarts{$c});
+				}
+			}
+		}
+
 	# Clean up finished processes
 	local $pid;
 	do {	$pid = waitpid(-1, WNOHANG);
@@ -789,6 +708,9 @@ while(1) {
 		} while($pid != 0 && $pid != -1);
 	@childpids = grep { kill(0, $_) } @childpids;
 	my %childpids = map { $_, 1 } @childpids;
+	foreach my $s (keys %childstarts) {
+		delete($childstarts{$s}) if (!$childpids{$s});
+		}
 
 	# Clean up connection counts from IPs that are no longer in use
 	foreach my $ip (keys %ipconnmap) {
@@ -888,7 +810,7 @@ while(1) {
 			# got new connection
 			$acptaddr = accept(SOCK, $s);
 			print DEBUG "accept returned ",length($acptaddr),"\n";
-			if (!$acptaddr) { next; }
+			next if (!$acptaddr);
 			binmode(SOCK);
 
 			# Work out IP and port of client
@@ -995,8 +917,9 @@ while(1) {
 
 				# Initialize SSL for this connection
 				if ($use_ssl) {
-					$ssl_con = &ssl_connection_for_ip(
-							SOCK, $ipv6fhs{$s});
+					($ssl_con, $ssl_certfile,
+					 $ssl_keyfile) = &ssl_connection_for_ip(
+							   SOCK, $ipv6fhs{$s});
 					print DEBUG "ssl_con returned $ssl_con\n";
 					$ssl_con || exit;
 					}
@@ -1015,6 +938,7 @@ while(1) {
 				exit;
 				}
 			push(@childpids, $handpid);
+			$childstarts{$handpid} = time();
 			push(@$ipconns, $handpid);
 			push(@$netconns, $handpid);
 			if ($need_pipes) {
@@ -1039,7 +963,7 @@ while(1) {
 		    (!@allow || &ip_match($fromip, $toip, @allow))) {
 			local $listenhost = &get_socket_name(LISTEN, 0);
 			send(LISTEN, "$listenhost:$config{'port'}:".
-				 ($use_ssl || $config{'inetd_ssl'} ? 1 : 0).":".
+				 ($use_ssl ? 1 : 0).":".
 				 ($config{'listenhost'} ?
 					&get_system_hostname() : ""),
 				 0, $from)
@@ -1281,9 +1205,10 @@ while(1) {
 					# This must be the password .. try it
 					# and send back the results
 					local ($vu, $expired, $nonexist) =
-						&validate_user($conv->{'user'},
-							       $answer,
-							       $conf->{'host'});
+						&validate_user_caseless(
+							$conv->{'user'},
+							$answer,
+							$conf->{'host'});
 					local $ok = $vu ? 1 : 0;
 					print $outfd "2 $conv->{'user'} $ok $expired $notexist\n";
 					&end_pam_conversation($conv);
@@ -1329,6 +1254,7 @@ while(1) {
 sub handle_request
 {
 local ($acptip, $localip, $ipv6) = @_;
+seek(DEBUG, 0, 2);
 print DEBUG "handle_request: from $acptip to $localip ipv6=$ipv6\n";
 if ($config{'loghost'}) {
 	$acpthost = &to_hostname($acptip);
@@ -1368,6 +1294,9 @@ print DEBUG "handle_request: passed IP checks\n";
 # child processes. As this increases, we use a shorter timeout to avoid
 # an attacker overloading the system.
 local $header_timeout = 60 + ($config{'maxconns'} - @childpids) * 10;
+if ($header_timeout > 10*60) {
+	$header_timeout = 10*60;
+	}
 
 # Wait at most 60 secs for start of headers for initial requests, or
 # 10 minutes for kept-alive connections
@@ -1388,11 +1317,14 @@ if (!$sel) {
 $checked_timeout++;
 print DEBUG "handle_request: passed timeout check\n";
 
-# Read the HTTP request and headers
+# Read the HTTP request line
+alarm(10);
+$SIG{'ALRM'} = sub { die "timeout" };
 local $origreqline = &read_line();
 ($reqline = $origreqline) =~ s/\r|\n//g;
 $method = $page = $request_uri = undef;
 print DEBUG "handle_request reqline=$reqline\n";
+alarm(0);
 if (!$reqline && (!$use_ssl || $checked_timeout > 1)) {
 	# An empty request .. just close the connection
 	print DEBUG "handle_request: rejecting empty request\n";
@@ -1414,29 +1346,25 @@ elsif ($reqline !~ /^(\S+)\s+(.*)\s+HTTP\/1\..$/) {
 			}
 		local $url = $wantport == 443 ? "https://$urlhost/"
 					      : "https://$urlhost:$wantport/";
-		if ($config{'ssl_redirect'}) {
-			# Just re-direct to the correct URL
-			sleep(1);	# Give browser a change to finish
-					# sending its request
-			&write_data("HTTP/1.0 302 Moved Temporarily\r\n");
-			&write_data("Date: $datestr\r\n");
-			&write_data("Server: $config{'server'}\r\n");
-			&write_data("Location: $url\r\n");
-			&write_keep_alive(0);
-			&write_data("\r\n");
-			return 0;
-		} elsif ($config{'hide_admin_url'} != 1) {
-			# Tell user the correct URL
-			&http_error(200, "Document follows",
-				"This web server is running in SSL mode. ".
-				"Try the URL <a href='$url'>$url</a> ".
-				"instead.", 0, 1);
-		} else {
-			# Throw an error
-			&http_error(404, "Page not found",
-			    "The requested URL was not found on this server.")
+		local $jsurl = $config{'musthost'} ?
+				                   $url :
+				                   "https://'+location.host+'";
+		local $jsredir = $config{'musthost'} ?
+				                   "location.href='$url'" :
+				                   "location.protocol='https:'";
+		$reqline = "GET / HTTP/1.1";	# Fake it for the log
+		&http_error(200, "Document follows",
+			"This web server is running in SSL mode. ".
+			"Trying to redirect to <a href='$url'>$url</a> instead ...".
+			"<script>".
+			"if (location.protocol != 'https:') {".
+			"  document.querySelector('a').href='".$jsurl."';document.querySelector('a').innerText='".$jsurl."';".
+			"".$jsredir."".
+			"}".
+			"</script>",
+			0, 1);
 		}
-	} elsif (ord(substr($reqline, 0, 1)) == 128 && !$use_ssl) {
+	elsif (ord(substr($reqline, 0, 1)) == 128 && !$use_ssl) {
 		# This could be an https request when it should be http ..
 		# need to fake a HTTP response
 		eval <<'EOF';
@@ -1472,24 +1400,8 @@ elsif ($reqline !~ /^(\S+)\s+(.*)\s+HTTP\/1\..$/) {
 			local $url = $config{'musthost'} ?
 					"https://$config{'musthost'}:$port/" :
 					"https://$host:$port/";
-			if ($config{'ssl_redirect'}) {
-				# Just re-direct to the correct URL
-				sleep(1);	# Give browser a change to
-						# finish sending its request
-				&write_data("HTTP/1.0 302 Moved Temporarily\r\n");
-				&write_data("Date: $datestr\r\n");
-				&write_data("Server: $config{'server'}\r\n");
-				&write_data("Location: $url\r\n");
-				&write_keep_alive(0);
-				&write_data("\r\n");
-				return 0;
-			} elsif ($config{'hide_admin_url'} != 1) {
-				# Tell user the correct URL
-				&http_error(200, "Bad Request", "This web server is not running in SSL mode. Try the URL <a href='$url'>$url</a> instead.", 0, 1);
-			} else {
-				&http_error(404, "Page not found",
-				    "The requested URL was not found on this server.");
-			}
+			$reqline = "GET / HTTP/1.1";	# Fake it for the log
+			&http_error(200, "Bad Request", "This web server is not running in SSL mode. Try the URL <a href='$url'>$url</a> instead.", 0, 1);
 EOF
 		if ($@) {
 			&http_error(400, "Bad Request");
@@ -1502,6 +1414,10 @@ EOF
 $method = $1;
 $request_uri = $page = $2;
 %header = ();
+
+# Read HTTP headers
+alarm(60);
+$SIG{'ALRM'} = sub { die "timeout" };
 local $lastheader;
 while(1) {
 	($headline = &read_line()) =~ s/\r|\n//g;
@@ -1514,14 +1430,17 @@ while(1) {
 		$header{$lastheader} .= $headline;
 		}
 	else {
+		alarm(0);
 		&http_error(400, "Bad Header ".&html_strip($headline));
 		}
 	if (&is_bad_header($header{$lastheader}, $lastheader)) {
+		alarm(0);
 		delete($header{$lastheader});
 		&http_error(400, "Bad Header Contents ".
 				 &html_strip($lastheader));
 		}
 	}
+alarm(0);
 
 # If a remote IP is given in a header (such as via a proxy), only use it
 # for logging unless trust_real_ip is set
@@ -1580,9 +1499,10 @@ if (defined($header{'host'})) {
 	}
 
 # Create strings for use in redirects
-$ssl = $config{'redirect_ssl'} ne '' ? $config{'redirect_ssl'} :
-	$use_ssl || $config{'inetd_ssl'};
+$ssl = $config{'redirect_ssl'} ne '' ? $config{'redirect_ssl'} : $use_ssl;
 $redirport = $config{'redirect_port'} || $port;
+$redirport = $config{'redirect_port'}
+	if ($config{'redirect_host'});
 $portstr = $redirport == 80 && !$ssl ? "" :
 	   $redirport == 443 && $ssl ? "" : ":".$redirport;
 $redirhost = $config{'redirect_host'} || $host;
@@ -1798,8 +1718,8 @@ if (!$validated && !$deny_authentication && !$config{'session'} &&
 	($authuser, $authpass) = split(/:/, &b64decode($1), 2);
 	print DEBUG "handle_request: doing basic auth check authuser=$authuser authpass=$authpass\n";
 	local ($vu, $expired, $nonexist, $wvu) =
-		&validate_user($authuser, $authpass, $host,
-			       $acptip, $port);
+		&validate_user_caseless($authuser, $authpass, $host,
+				        $acptip, $port);
 	print DEBUG "handle_request: vu=$vu expired=$expired nonexist=$nonexist\n";
 	if ($vu && (!$expired || $config{'passwd_mode'} == 1)) {
 		$authuser = $vu;
@@ -1823,7 +1743,7 @@ if (!$validated && !$deny_authentication && !$config{'session'} &&
 			    "Password contains invalid characters");
 		}
 
-	if ($config{'passdelay'} && !$config{'inetd'} && $authuser) {
+	if ($config{'passdelay'} && $authuser) {
 		# check with main process for delay
 		print DEBUG "handle_request: about to ask for password delay\n";
 		print $PASSINw "delay $authuser $acptip $validated\n";
@@ -1894,8 +1814,8 @@ if ($config{'session'} && !$deny_authentication &&
 			}
 
 		local ($vu, $expired, $nonexist, $wvu) =
-			&validate_user($in{'user'}, $in{'pass'}, $host,
-				       $acptip, $port);
+			&validate_user_caseless($in{'user'}, $in{'pass'}, $host,
+					        $acptip, $port);
 		if ($vu && $wvu) {
 			my $uinfo = &get_user_details($wvu, $vu);
 			if ($uinfo && $uinfo->{'twofactor_provider'}) {
@@ -2228,11 +2148,25 @@ $simple = &simplify_path($page, $bogus);
 print DEBUG "handle_request: page=$page simple=$simple\n";
 if ($bogus) {
 	&http_error(400, "Invalid path");
+	return 0;
 	}
 
 # Check for a DAV request
 if ($davpath) {
 	return &handle_dav_request($davpath);
+	}
+
+# Check for a websockets request
+if (lc($header{'connection'}) =~ /upgrade/ &&
+    lc($header{'upgrade'}) eq 'websocket' &&
+    $baseauthuser) {
+	print DEBUG "websockets request to $simple\n";
+	my ($ws) = grep { $_->{'path'} eq $simple } @websocket_paths;
+	if (!$ws) {
+		&http_error(400, "Unknown websocket path");
+		return 0;
+		}
+	return &handle_websocket_request($ws, $simple);
 	}
 
 # Work out the active theme(s)
@@ -2463,6 +2397,7 @@ if (&get_type($full) eq "internal/cgi" && $validated != 4) {
 	$envlang = $ENV{"LANG"};
 	$envroot = $ENV{"SystemRoot"};
 	$envperllib = $ENV{'PERLLIB'};
+	$envdoclroot = $ENV{'LIBROOT'};
 	foreach my $k (keys %ENV) {
 		delete($ENV{$k});
 		}
@@ -2471,6 +2406,7 @@ if (&get_type($full) eq "internal/cgi" && $validated != 4) {
 	$ENV{"USER"} = $envuser if ($envuser);
 	$ENV{"OLD_LANG"} = $envlang if ($envlang);
 	$ENV{"SystemRoot"} = $envroot if ($envroot);
+	$ENV{'LIBROOT'} = $envdoclroot if ($envdoclroot);
 	$ENV{'PERLLIB'} = $envperllib if ($envperllib);
 	$ENV{"HOME"} = $user_homedir;
 	$ENV{"SERVER_SOFTWARE"} = $config{"server"};
@@ -2513,8 +2449,13 @@ if (&get_type($full) eq "internal/cgi" && $validated != 4) {
 		}
 	$ENV{"QUERY_STRING"} = $querystring;
 	$ENV{"MINISERV_CONFIG"} = $config_file;
-	$ENV{"HTTPS"} = $use_ssl || $config{'inetd_ssl'} ? "ON" : "";
+	$ENV{"HTTPS"} = $use_ssl ? "ON" : "";
+	$ENV{"SSL_HSTS"} = $config{"ssl_hsts"};
 	$ENV{"MINISERV_PID"} = $miniserv_main_pid;
+	if ($use_ssl) {
+		$ENV{"MINISERV_CERTFILE"} = $ssl_certfile;
+		$ENV{"MINISERV_KEYFILE"} = $ssl_keyfile;
+		}
 	$ENV{"SESSION_ID"} = $session_id if ($session_id);
 	$ENV{"LOCAL_USER"} = $localauth_user if ($localauth_user);
 	$ENV{"MINISERV_INTERNAL"} = $miniserv_internal if ($miniserv_internal);
@@ -2858,6 +2799,7 @@ else {
 	if ($reqline);
 &log_error($msg, $body ? " : $body" : "") if (!$noerr);
 shutdown(SOCK, 1);
+close(SOCK);
 exit if (!$noexit);
 }
 
@@ -2937,6 +2879,23 @@ sub b64decode
         $res .= unpack("u", $len . $1 );
     }
     return $res;
+}
+
+# b64encode(string)
+# Encodes a string into base64 format
+sub b64encode
+{
+my ($str) = @_;
+my $res;
+pos($str) = 0;                          # ensure start at the beginning
+while($str =~ /(.{1,57})/gs) {
+	$res .= substr(pack('u57', $1), 1);
+	chop($res);
+	}
+$res =~ tr|\` -_|AA-Za-z0-9+/|;
+my $padding = (3 - length($str) % 3) % 3;
+$res =~ s/.{$padding}$/'=' x $padding/e if ($padding);
+return $res;
 }
 
 # ip_match(remoteip, localip, [match]+)
@@ -3089,6 +3048,9 @@ close(SOCK);
 dbmclose(%sessiondb);
 kill('KILL', $logclearer) if ($logclearer);
 kill('KILL', $extauth) if ($extauth);
+if (&indexof("--nofork", @miniserv_argv) < 0) {
+	unshift(@miniserv_argv, "--nofork");
+	}
 exec($perl_path, $miniserv_path, @miniserv_argv);
 die "Failed to restart miniserv with $perl_path $miniserv_path";
 }
@@ -3400,6 +3362,7 @@ return $mode;
 
 sub term_handler
 {
+&log_error("Shutting down");
 kill('TERM', @childpids) if (@childpids);
 kill('KILL', $logclearer) if ($logclearer);
 kill('KILL', $extauth) if ($extauth);
@@ -3617,6 +3580,20 @@ sub urlize {
   return $tmp2;
 }
 
+# validate_user_caseless(username, password, host, remote-ip, webmin-port)
+# Calls validate_user, but also checks the lower case name if the given login
+# is mixed case
+sub validate_user_caseless
+{
+my @args = @_;
+my @rv = &validate_user(@args);
+if (!$rv[0] && $args[0] ne lc($args[0])) {
+	$args[0] = lc($args[0]);
+	@rv = &validate_user(@args);
+	}
+return @rv;
+}
+
 # validate_user(username, password, host, remote-ip, webmin-port)
 # Checks if some username and password are valid. Returns the modified username,
 # the expired / temp pass flag, the non-existence flag, and the underlying
@@ -3718,13 +3695,16 @@ if ($use_pam) {
 	local $pamh = new Authen::PAM($config{'pam'}, $pam_username,
 				      \&pam_conv_func);
 	if (ref($pamh)) {
+		print DEBUG "validate_unix_user: using PAM\n";
 		$pamh->pam_set_item(PAM_RHOST(), $_[2]) if ($_[2]);
 		$pamh->pam_set_item(PAM_TTY(), $_[3]) if ($_[3]);
 		local $rcode = 0;
 		local $pam_ret = $pamh->pam_authenticate();
+		print DEBUG "validate_unix_user: pam_ret=$pam_ret\n";
 		if ($pam_ret == PAM_SUCCESS()) {
 			# Logged in OK .. make sure password hasn't expired
 			local $acct_ret = $pamh->pam_acct_mgmt();
+			print DEBUG "validate_unix_user: acct_ret=$acct_ret\n";
 			$pam_ret = $acct_ret;
 			if ($acct_ret == PAM_SUCCESS()) {
 				$pamh->pam_open_session();
@@ -3752,6 +3732,7 @@ elsif ($config{'pam_only'}) {
 elsif ($config{'passwd_file'}) {
 	# Check in a password file
 	local $rv = 0;
+	print DEBUG "validate_unix_user: reading $config{'passwd_file'}\n";
 	open(FILE, $config{'passwd_file'});
 	if ($config{'passwd_file'} eq '/etc/security/passwd') {
 		# Assume in AIX format
@@ -3780,8 +3761,8 @@ elsif ($config{'passwd_file'}) {
 					local $c = $l[$config{'passwd_cindex'}];
 					local $m = $l[$config{'passwd_mindex'}];
 					local $day = time()/(24*60*60);
-					if ($c =~ /^\d+/ && $m =~ /^\d+/ &&
-					    $day - $c > $m) {
+					print DEBUG "validate_unix_user: c=$c m=$m day=$day\n";
+					if ($c =~ /^\d+/ && $m =~ /^\d+/ && $day - $c > $m) {
 						# Yep, it has ..
 						$rv = 2;
 						}
@@ -3890,11 +3871,14 @@ if (!$uinfo) {
 			s/\r|\n//g;
 			s/#.*$//;
 			if (/^(\S+)\s+(\S+)/) {
+				my ($from, $to) = ($1, $2);
+				$from =~ s/\\(.)/$1/g;
+				$to =~ s/\\(.)/$1/g;
 				if ($config{'user_mapping_reverse'}) {
-					$user_mapping{$1} = $2;
+					$user_mapping{$from} = $to;
 					}
 				else {
-					$user_mapping{$2} = $1;
+					$user_mapping{$to} = $from;
 					}
 				}
 			}
@@ -4553,14 +4537,82 @@ foreach $k (keys %{$_[0]}) {
 return @rv;
 }
 
-# create_ssl_context(keyfile, [certfile], [extracas])
+# setup_ssl_contexts()
+# Setup all the per-IP and per-domain SSL contexts and the global context based
+# on the config
+sub setup_ssl_contexts
+{
+my @ipkeys = &get_ipkeys(\%config);
+if ($config{'ssl_version'}) {
+	# Force an SSL version
+	$Net::SSLeay::version = $config{'ssl_version'};
+	$Net::SSLeay::ssl_version = $config{'ssl_version'};
+	}
+my $ctx = &create_ssl_context($config{'keyfile'},
+			      $config{'certfile'},
+			      $config{'extracas'},
+			      $ssl_contexts{"*"});
+$ctx || return "Failed to create default SSL context";
+my @added = ( "*" );
+$ssl_contexts{"*"} = $ctx;
+foreach my $ipkey (@ipkeys) {
+	my $ctx = &create_ssl_context(
+		$ipkey->{'key'}, $ipkey->{'cert'},
+		$ipkey->{'extracas'} || $config{'extracas'},
+		$ssl_contexts{$ipkey->{'ips'}->[0]});
+	if ($ctx) {
+		foreach $ip (@{$ipkey->{'ips'}}) {
+			$ssl_contexts{$ip} = $ctx;
+			push(@added, $ip);
+			}
+		}
+	}
+foreach my $ip (keys %ssl_contexts) {
+	if (&indexof($ip, @added) < 0) {
+		delete($ssl_contexts{$ip});
+		}
+	}
+
+# Setup per-hostname SSL contexts on the main IP
+if (defined(&Net::SSLeay::CTX_set_tlsext_servername_callback)) {
+	Net::SSLeay::CTX_set_tlsext_servername_callback(
+	    $ssl_contexts{"*"}->{'ctx'},
+	    sub {
+		my $ssl = shift;
+		my $h = Net::SSLeay::get_servername($ssl);
+		my $c = $ssl_contexts{$h} ||
+			$h =~ /^[^\.]+\.(.*)$/ && $ssl_contexts{"*.$1"};
+		if ($c) {
+			Net::SSLeay::set_SSL_CTX($ssl, $c->{'ctx'});
+			}
+		});
+	}
+return undef;
+}
+
+# create_ssl_context(keyfile, [certfile], [extracas], [&existing-context])
+# Create and return one SSL context based on a key file and optional cert file
+# and CA cert
 sub create_ssl_context
 {
-local ($keyfile, $certfile, $extracas) = @_;
+local ($keyfile, $certfile, $extracas, $already) = @_;
+local @kst = stat($keyfile);
+local @cst = stat($certfile);
+if ($already && $already->{'keyfile'} eq $keyfile &&
+		$already->{'keytime'} == $kst[9] &&
+		$already->{'certfile'} eq $certfile &&
+		$already->{'certtime'} == $cst[9] &&
+		$already->{'extracas'} eq $extracas) {
+	# Context we already have is valid
+	return $already;
+	}
 local $ssl_ctx;
 eval { $ssl_ctx = Net::SSLeay::new_x_ctx() };
 $ssl_ctx ||= Net::SSLeay::CTX_new();
-$ssl_ctx || die "Failed to create SSL context : $!";
+if (!$ssl_ctx) {
+	print STDERR "Failed to create SSL context : $!\n";
+	return undef;
+	}
 my @extracas = $extracas && $extracas ne "none" ? split(/\s+/, $extracas) : ();
 
 # Validate cert files
@@ -4652,7 +4704,12 @@ if ($config{'ssl_honorcipherorder'}) {
 		&Net::SSLeay::OP_CIPHER_SERVER_PREFERENCE)';
 	}
 
-return $ssl_ctx;
+return { 'keyfile' => $keyfile,
+	 'keytime' => $kst[9],
+	 'certfile' => $certfile,
+	 'certtime' => $cst[9],
+	 'extracas' => $extracas,
+	 'ctx' => $ssl_ctx };
 }
 
 # ssl_connection_for_ip(socket, ipv6-flag)
@@ -4667,7 +4724,7 @@ if (!$sn) {
 	}
 local (undef, $myip, undef) = &get_address_ip($sn, $ipv6);
 local $ssl_ctx = $ssl_contexts{$myip} || $ssl_contexts{"*"};
-local $ssl_con = Net::SSLeay::new($ssl_ctx);
+local $ssl_con = Net::SSLeay::new($ssl_ctx->{'ctx'});
 if ($config{'ssl_cipher_list'}) {
 	# Force use of ciphers
 	eval "Net::SSLeay::set_cipher_list(
@@ -4681,7 +4738,35 @@ Net::SSLeay::set_fd($ssl_con, fileno($sock));
 if (!Net::SSLeay::accept($ssl_con)) {
 	return undef;
 	}
-return $ssl_con;
+# Check for a per-hostname SSL context and use that instead
+if (defined(&Net::SSLeay::get_servername)) {
+	my $h = Net::SSLeay::get_servername($ssl_con);
+	if ($h) {
+		my $c = $ssl_contexts{$h} ||
+			$h =~ /^[^\.]+\.(.*)$/ && $ssl_contexts{"*.$1"};
+		if ($c) {
+			$ssl_ctx = $c;
+			}
+		}
+	}
+return ($ssl_con, $ssl_ctx->{'certfile'}, $ssl_ctx->{'keyfile'});
+}
+
+# parse_websockets_config()
+# Extract websockets proxies from the config hash
+sub parse_websockets_config
+{
+@websocket_paths = ( );
+foreach my $c (keys %config) {
+	if ($c =~ /^websockets_(\S+)$/) {
+		my $ws = { 'path' => $1 };
+		foreach my $kv (split(/\s+/, $config{$c})) {
+			my ($k, $v) = split(/=/, $kv, 2);
+			$ws->{$k} = $v;
+			}
+		push(@websocket_paths, $ws);
+		}
+	}
 }
 
 # login_redirect(username, password, host)
@@ -4702,6 +4787,7 @@ return $url;
 # Re-read %config, and call post-config actions
 sub reload_config_file
 {
+print DEBUG "in reload_config_file\n";
 &log_error("Reloading configuration");
 %config = &read_config_file($config_file);
 &update_vital_config();
@@ -4710,10 +4796,14 @@ sub reload_config_file
 &build_config_mappings();
 &read_webmin_crons();
 &precache_files();
+&setup_ssl_contexts()
+	if ($use_ssl);
+&parse_websockets_config();
 if ($config{'session'}) {
 	dbmclose(%sessiondb);
 	dbmopen(%sessiondb, $config{'sessiondb'}, 0700);
 	}
+print DEBUG "done reload_config_file\n";
 }
 
 # read_config_file(file)
@@ -5200,7 +5290,7 @@ sub disconnect_userdb
 {
 my ($str, $h) = @_;
 if ($str =~ /^(mysql|postgresql):/) {
-	# DBI disconnnect
+	# DBI disconnect
 	$h->disconnect();
 	}
 elsif ($str =~ /^ldap:/) {
@@ -5332,10 +5422,11 @@ foreach my $pe (split(/\t+/, $config{'expires_paths'})) {
 		}
 	}
 
-# Open debug log
+# Re-open debug log
 close(DEBUG);
-if ($config{'debug'}) {
-	open(DEBUG, ">>$config{'debug'}");
+if ($config{'debuglog'}) {
+	open(DEBUG, ">>$config{'debuglog'}");
+	select(DEBUG); $| = 1; select(STDOUT);
 	}
 else {
 	open(DEBUG, ">/dev/null");
@@ -5562,6 +5653,185 @@ if ($config{'dav_debug'}) {
 # Log it
 &log_request($loghost, $authuser, $reqline, $response->code(), 
 	     length($response->content()));
+return 0;
+}
+
+# handle_websocket_request(&wsconfig, original-path)
+# Handle a websockets connection, which may be a proxy to another host and port
+sub handle_websocket_request
+{
+my ($ws, $simple) = @_;
+my $key = $header{'sec-websocket-key'};
+if (!$key) {
+	&http_error(500, "Missing Sec-Websocket-Key header");
+	return 0;
+	}
+my @users = split(/\s+/, $ws->{'user'});
+my @busers = split(/\s+/, $ws->{'buser'});
+if (@users || @busers) {
+	if (&indexof($authuser, @users) < 0 &&
+	    &indexof($baseauthuser, @busers) < 0) {
+		&http_error(500, "Invalid user for Websockets connection");
+		return 0;
+		}
+	}
+my @protos = split(/\s*,\s*/, $header{'sec-websocket-protocol'});
+print DEBUG "websockets protos ",join(" ", @protos),"\n";
+
+# Connect to the configured backend
+my $fh = "WEBSOCKET";
+if ($ws->{'host'}) {
+	# Backend is a TCP port
+	my $err = &open_socket($ws->{'host'}, $ws->{'port'}, $fh);
+	&http_error(500, "Websockets connection failed : $err") if ($err);
+	print DEBUG "websockets host $ws->{'host'}:$ws->{'port'}\n";
+	}
+elsif ($ws->{'pipe'}) {
+	# Backend is a Unix pipe
+	open($fh, $ws->{'pipe'}) ||
+		&http_error(500, "Websockets pipe failed : $?");
+	print DEBUG "websockets pipe $ws->{'pipe'}\n";
+	}
+else {
+	&http_error(500, "Invalid Webmin websockets config");
+	}
+
+# Send successful connection headers
+eval "use Digest::SHA";
+if ($@) {
+	&http_error(500, "Missing Digest::SHA perl module");
+	}
+my $rkey = $key."258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+my $sha1 = Digest::SHA->new;
+$sha1->add($rkey);
+my $digest = $sha1->digest;
+$digest = &b64encode($digest);
+&write_data("HTTP/1.1 101 Switching Protocols\r\n");
+&write_data("Upgrade: websocket\r\n");
+&write_data("Connection: Upgrade\r\n");
+&write_data("Sec-Websocket-Accept: $digest\r\n");
+if (@protos) {
+	&write_data("Sec-Websocket-Protocol: $protos[0]\r\n");
+	}
+&write_data("\r\n");
+
+# Send a websockets request to the backend
+my $path = $ws->{'wspath'} || $simple;
+my $bsession_id = &b64encode($session_id);
+print DEBUG "send request to $path to websockets backend\n";
+print $fh "GET $path HTTP/1.1\r\n";
+if ($ws->{'host'}) {
+	print $fh "Host: $ws->{'host'}\r\n";
+	}
+print $fh "Upgrade: websocket\r\n";
+print $fh "Connection: Upgrade\r\n";
+if ($ws->{'nokey'}) {
+	print $fh "Sec-WebSocket-Key: $key\r\n";
+	}
+else {
+	print DEBUG "Sending key $bsession_id\n";
+	print $fh "Sec-WebSocket-Key: $bsession_id\r\n";
+	}
+if (@protos) {
+	print $fh "Sec-WebSocket-Protocol: ",join(" ", @protos),"\r\n";
+	}
+print $fh "Sec-WebSocket-Version: $header{'sec-websocket-version'}\r\n";
+print $fh "\r\n";
+
+# Read back the reply
+my $rh = <$fh>;
+$rh =~ s/\r|\n//g;
+print DEBUG "got $rh from websockets backend\n";
+$rh =~ /^HTTP\/1\.1\s+(\d+)/ ||
+	&http_error(500, "Bad response from websockets backend : ".
+		    &html_strip($rh));
+my $code = $1;
+my %rheader;
+my $lastheader;
+while(1) {
+	$rh = <$fh>;
+	$rh =~ s/\r|\n//g;
+	last if ($rh eq "");
+	if ($rh =~ /^(\S+):\s*(.*)$/) {
+		print DEBUG "got websockets header $1 = $2\n";
+                $rheader{$lastheader = lc($1)} = $2;
+                }
+        elsif ($rh =~ /^\s+(.*)$/) {
+                $rheader{$lastheader} .= $headline;
+                }
+        else {
+                &http_error(500, "Bad header from websockets backend ".
+			    &html_strip($rh));
+                }
+	}
+if ($code != 101) {
+	&http_error(500, "Bad response code $code from websockets backend : ".
+			 &html_strip($rh));
+	}
+lc($rheader{'upgrade'}) eq 'websocket' ||
+	 &http_error(500, "Missing Upgrade header from websockets backend");
+lc($rheader{'connection'}) =~ /upgrade/ ||
+	 &http_error(500, "Missing Connection header from websockets backend");
+
+# Check the reply key
+my $bdigest;
+if ($ws->{'nokey'}) {
+	$bdigest = $digest;
+	}
+else {
+	my $brkey = $bsession_id."258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+	my $bsha1 = Digest::SHA->new;
+	$bsha1->add($brkey);
+	$bdigest = $bsha1->digest;
+	$bdigest = &b64encode($bdigest);
+	}
+print DEBUG "expecting digest $bdigest\n";
+lc($rheader{'sec-websocket-accept'}) eq lc($bdigest) ||
+	 &http_error(500, "Incorrect digest header from websockets backend");
+
+# Log now
+&log_request($loghost, $authuser, $reqline, "101", 0);
+
+# Start forwarding data
+seek(DEBUG, 0, 2);
+print DEBUG "in websockets loop\n";
+my $last_session_check_time = time();
+while(1) {
+	my $rmask = undef;
+	vec($rmask, fileno($fh), 1) = 1;
+	vec($rmask, fileno(SOCK), 1) = 1;
+	my $sel = select($rmask, undef, undef, 10);
+	my ($buf, $ok);
+	if (vec($rmask, fileno($fh), 1)) {
+		# Got something from the websockets backend
+		$ok = sysread($fh, $buf, 1024);
+		last if ($ok <= 0);	# Backend has closed
+		&write_data($buf);
+		}
+	if (vec($rmask, fileno(SOCK), 1)) {
+		# Got something from the browser
+		$buf = &read_data(1024);
+		last if (!defined($buf) || length($buf) == 0);
+		syswrite($fh, $buf, length($buf)) || last;
+		}
+	my $now = time();
+	if ($now - $last_session_check_time > 10) {
+		# Re-validate the browser session every 10 seconds
+		print DEBUG "verifying websockets session $session_id\n";
+		print $PASSINw "verify $session_id 0 $acptip\n";
+		<$PASSOUTr> =~ /(\d+)\s+(\S+)/;
+		if ($1 != 2) {
+			print DEBUG "session $session_id has expired!\n";
+			last;
+			}
+		$last_session_check_time = $now;
+		}
+	}
+close($fh);
+close(SOCK);
+print DEBUG "done websockets loop\n";
+
+return 0;
 }
 
 # get_system_hostname()
@@ -6436,6 +6706,7 @@ if (!$pid) {
 	$ENV{"DOCUMENT_REALROOT"} = $root0;
 	$ENV{"MINISERV_CONFIG"} = $config_file;
 	$ENV{"HTTPS"} = "ON" if ($use_ssl);
+	$ENV{"SSL_HSTS"} = $config{"ssl_hsts"};
 	$ENV{"MINISERV_PID"} = $miniserv_main_pid;
 	$ENV{"SCRIPT_FILENAME"} = $cmd;
 	if ($ENV{"SCRIPT_FILENAME"} =~ /^\Q$root0\E(\/.*)$/) {
@@ -6551,3 +6822,73 @@ sub getenv
 my ($key) = @_;
 return $ENV{ uc($key) } || $ENV{ lc($key) };
 }
+
+# open_socket(host, port, filehandle)
+# Connect to a TCP port on some host. Returns undef on success, or an error
+# message on failure.
+sub open_socket
+{
+my ($host, $port, $fh) = @_;
+
+# Lookup all IPv4 and v6 addresses for the host
+my @ips = &to_ipaddress($host);
+push(@ips, &to_ip6address($host));
+if (!@ips) {
+	return "Failed to lookup IP address for $host";
+	}
+
+# Try each of the resolved IPs
+my $msg;
+my $proto = getprotobyname("tcp");
+foreach my $ip (@ips) {
+	$msg = undef;
+	if (&check_ipaddress($ip)) {
+		# Create IPv4 socket and connection
+		if (!socket($fh, PF_INET(), SOCK_STREAM, $proto)) {
+			$msg = "Failed to create socket : $!";
+			next;
+			}
+		my $addr = inet_aton($ip);
+		if ($gconfig{'bind_proxy'}) {
+			# BIND to outgoing IP
+			if (!bind($fh, pack_sockaddr_in(0, inet_aton($bindip)))) {
+				$msg = "Failed to bind to source address : $!";
+				next;
+				}
+			}
+		if (!connect($fh, pack_sockaddr_in($port, $addr))) {
+			$msg = "Failed to connect to $host:$port : $!";
+			next;
+			}
+		}
+	else {
+		# Create IPv6 socket and connection
+		if (!&supports_ipv6()) {
+			$msg = "IPv6 connections are not supported";
+			next;
+			}
+		if (!socket($fh, PF_INET6(), SOCK_STREAM, $proto)) {
+			$msg = "Failed to create IPv6 socket : $!";
+			next;
+			}
+		my $addr = inet_pton(AF_INET6(), $ip);
+		if (!connect($fh, pack_sockaddr_in6($port, $addr))) {
+			$msg = "Failed to IPv6 connect to $host:$port : $!";
+			next;
+			}
+		}
+	last;	# If we got this far, it worked
+	}
+if ($msg) {
+	# Last attempt failed
+	return $msg;
+	}
+
+# Disable buffering
+my $old = select($fh);
+$| = 1;
+select($old);
+return undef;
+}
+
+

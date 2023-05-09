@@ -4,15 +4,17 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './webminlog-lib.pl';
-our (%text, %gconfig, %access_users, %in, %config, %access, %in);
+our (%text, %gconfig, %access_users, %in, %config, %access);
 &ReadParse();
 &foreign_require("acl", "acl-lib.pl");
 &ui_print_header(undef, $text{'index_title'}, "", undef, 1, 1);
 
-my @tabs = ( [ 'search', $text{'index_search'} ] );
+my @tabs = ( [ 'search', $text{'index_searchtab'} ] );
 if ($access{'notify'}) {
-	push(@tabs, [ 'notify', $text{'index_notify'} ]);
+	push(@tabs, [ 'notify', $text{'index_notifytab'} ]);
 	}
 print &ui_tabs_start(\@tabs, 'mode', $in{'mode'} || 'search', 1);
 

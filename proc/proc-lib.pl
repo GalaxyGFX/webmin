@@ -66,7 +66,8 @@ local @links;
 foreach $l ("tree", "user", "size", "cpu", ($has_zone ? ("zone") : ()),
 	    "search", "run") {
 	next if ($l eq "run" && !$access{'run'});
-	my $link = ( $l ne $_[0] ? &ui_link("index_".$l.".cgi", $text{"index_$l"}) : "<b>".$text{"index_$l"}."</b>" );
+	my $link = ( $l ne $_[0] ? &ui_link("index_".$l.".cgi", $text{"index_$l"}) :
+		"<b onclick='".&ui_page_refresh()."' style='cursor: pointer'>".$text{"index_$l"}."</b>" );
 	push(@links, $link);
 	}
 print &ui_links_row(\@links);
@@ -123,7 +124,7 @@ if ($gconfig{'os_type'} eq 'windows') {
 	open(TEMP, ">$temp");
 	print TEMP $_[4];
 	close(TEMP);
-	&open_execute_command(OUT, "$_[0] <$temp 2>&1", 1);
+	&open_execute_command(OUT, "$_[0] <".quotemeta($temp)." 2>&1", 1);
 	local $fh = $_[3];
 	while(<OUT>) {
 		if ($_[5]) {
@@ -248,11 +249,11 @@ do {    local $oldexit = $?;
 	} while($xp > 0);
 }
 
-# pty_process_exec(command, [uid, gid])
+# pty_process_exec(command, [uid, gid], [force-binary-name])
 # Starts the given command in a new pty and returns the pty filehandle and PID
 sub pty_process_exec
 {
-local ($cmd, $uid, $gid) = @_;
+local ($cmd, $uid, $gid, $binary) = @_;
 if (&is_readonly_mode()) {
 	# When in readonly mode, don't run the command
 	$cmd = "/bin/true";
@@ -294,8 +295,16 @@ if (!$@) {
 		open(STDOUT, ">&".fileno($ttyfh));
 		open(STDERR, ">&".fileno($ttyfh));
 		close($ttyfh);		# Already dup'd
-		exec($cmd);
-		print "Exec failed : $!\n";
+		if ($binary) {
+			my @args = &split_quoted_string($cmd);
+			my $args0 = $args[0];
+			$args[0] = $binary;
+			exec { $args0 } @args;
+			}
+		else {
+			exec($cmd);
+			}
+		print STDERR "Exec failed : $!\n";
 		exit 1;
 		}
 	$ptyfh->close_slave();
@@ -344,8 +353,16 @@ else {
 		open(STDOUT, ">&$ttyfh");
 		open(STDERR, ">&STDOUT");
 		close($ptyfh);
-		exec($cmd);
-		print "Exec failed : $!\n";
+		if ($binary) {
+			my @args = &split_quoted_string($cmd);
+			my $args0 = $args[0];
+			$args[0] = $binary;
+			exec { $args0 } @args;
+			}
+		else {
+			exec($cmd);
+			}
+		print STDERR "Exec failed : $!\n";
 		exit 1;
 		}
 	close($ttyfh);
@@ -415,7 +432,8 @@ if ($has_lsof_command) {
 	open(LSOF, "$has_lsof_command -i tcp -i udp -n |");
 	while(<LSOF>) {
 		if (/^(\S+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+).*(TCP|UDP)\s+(.*)/) {
-			local $n = { 'pid' => $2,
+			local $n = { 'cmd' => $1,
+				     'pid' => $2,
 				     'fd' => $4,
 				     'type' => $5,
 				     'proto' => $7 };
@@ -442,7 +460,6 @@ if ($has_lsof_command) {
 	close(LSOF);
 	}
 return @rv;
-
 }
 
 # find_process_sockets(pid)

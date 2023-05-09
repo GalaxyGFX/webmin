@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 no warnings 'redefine';
+no warnings 'uninitialized';
 
 # Globals from Webmin or bind8-lib.pl
 our (%config, %text, %in);
@@ -119,7 +120,9 @@ while($line = <$FILE>) {
 close($FILE);
 
 # parse into data structures
-my $i = 0; my $num = 0;
+my $i = 0;
+my $num = 0;
+my $currttl = undef;
 while($i < @tok) {
 	if ($tok[$i] =~ /^\$origin$/i) {
 		# $ORIGIN directive (may be relative or absolute)
@@ -178,6 +181,7 @@ while($i < @tok) {
 		       	       'defttl' => $tok[$i++],
 			       'type' => '' };
 		push(@rv, $defttl);
+		$currttl = $defttl->{'defttl'};
 		}
 	elsif ($tok[$i] =~ /^\$(\S+)/i) {
 		# some other special directive
@@ -278,6 +282,7 @@ while($i < @tok) {
 			}
 		$dir{'values'} = \@values;
 		$dir{'eline'} = $lnum[$i-1];
+		$dir{'realttl'} = $dir{'ttl'} || $currttl;
 
 		# Work out canonical form, and maybe use it
 		my $canon = $dir{'name'};
@@ -478,8 +483,12 @@ sub make_record
 my ($name, $ttl, $cls, $type, $values, $cmt) = @_;
 $type = $type eq "SPF" && !$config{'spf_record'} ? "TXT" :
         $type eq "DMARC" ? "TXT" : $type;
-return $name . ($ttl ? "\t".$ttl : "") . "\t" . $cls . "\t" . $type ."\t" .
-       $values . ($cmt ? "\t;$cmt" : "");
+return $name.
+       (defined($ttl) && $ttl ne "" ? "\t".$ttl : "").
+       "\t".$cls.
+       "\t".$type.
+       "\t".$values.
+       (defined($cmt) && $cmt ne "" ? "\t;$cmt" : "");
 }
 
 # bump_soa_record(file, &records)
@@ -863,7 +872,7 @@ if ($txt =~ /^v=dmarc1/i) {
 	my $dmarc = { };
 	foreach my $w (@w) {
 		$w = lc($w);
-		if ($w =~ /^(v|pct|ruf|rua|p|sp|adkim|aspf|fo)=(\S+)$/i) {
+		if ($w =~ /^(v|pct|ruf|rua|p|sp|adkim|aspf|fo|rf|ri)=(\S+)$/i) {
 			$dmarc->{$1} = $2;
 			}
 		else {
@@ -883,7 +892,7 @@ sub join_dmarc
 {
 my ($dmarc) = @_;
 my @rv = ( "v=DMARC1" );
-foreach my $s ("p", "pct", "ruf", "rua", "sp", "adkim", "aspf", "fo") {
+foreach my $s ("p", "pct", "ruf", "rua", "sp", "adkim", "aspf", "fo", "rf", "ri") {
 	if ($dmarc->{$s} && $dmarc->{$s} ne '') {
 		push(@rv, $s."=".$dmarc->{$s});
 		}
@@ -997,6 +1006,7 @@ if ($z->{'members'}) {
 else {
 	$fn = $z->{'file'};
 	}
+return undef if (!$fn);
 if ($abs) {
 	$fn = &absolute_path($fn);
 	}

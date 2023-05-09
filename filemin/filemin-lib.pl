@@ -4,7 +4,6 @@ BEGIN { push(@INC, ".."); };
 use WebminCore;
 &init_config();
 
-use lib './lib';
 use POSIX;
 use Encode qw(decode encode);
 use File::Basename;
@@ -52,6 +51,7 @@ sub get_paths {
     elsif ($access{'work_as_root'}) {
         # Root user, so no switching
         @remote_user_info = getpwnam('root');
+	@WebminCore::remote_user_info = @remote_user_info;
     }
     elsif ($access{'work_as_user'}) {
         # A specific user
@@ -59,6 +59,7 @@ sub get_paths {
         @remote_user_info ||
             &error("Unix user $access{'work_as_user'} does not exist!");
         &switch_to_unix_user(\@remote_user_info);
+	@WebminCore::remote_user_info = @remote_user_info;
     }
     else {
         # Run as the Webmin user we are connected as
@@ -100,8 +101,6 @@ sub get_paths {
     $quote_escaped_path = quote_escape($path);
     $urlized_path = urlize($path);
     
-    $cwd = &simplify_path($base.$path);
-
     # Work out max upload size
     if (&get_product_name() eq 'usermin') {
 	$upload_max = $config{'max'};
@@ -110,6 +109,7 @@ sub get_paths {
     }
 
     # Check that current directory is one of those that is allowed
+    $cwd = &simplify_path($base.$path);
     my $error = 1;
     for $allowed_path (@allowed_paths) {
         if (&is_under_directory($allowed_path, $cwd) ||
@@ -152,14 +152,15 @@ sub print_template {
 }
 
 sub print_errors {
-    my @errors = @_;
+    my (@errors) = @_;
     &ui_print_header(undef, $module_info{'name'}, "");
-    print $text{'errors_occured'};
-    print "<ul>";
+    print "<tt>$text{'errors_occured'}</tt><br>";
+    print "<ul class=\"err-body\">";
     foreach $error(@errors) {
-        print("<li>$error</li>");
+        print("<li><tt>$error</tt></li>");
     }
-    print "<ul>";
+    print "</ul>";
+    print "<script>if(typeof print_errors_post==='function'){print_errors_post('$module_name')}</script>";
     &ui_print_footer("index.cgi?path=".&urlize($path), $text{'previous_page'});
 }
 
@@ -170,6 +171,17 @@ sub print_interface {
     @allowed_for_edit = split(/\s+/, $access{'allowed_for_edit'});
     %allowed_for_edit = map { $_ => 1} @allowed_for_edit;
     my %tinfo = &get_theme_info($current_theme);
+
+    # User and group lists for acls
+    if (&has_command('setfacl')) {
+        our $acl_user_select = &ui_user_textbox("user", $realuser);
+        our $acl_group_select = &ui_user_textbox("group", $realuser);
+        our $acl_manual = &ui_details(
+            { title => $text{'acls_manual'},
+              content => &ui_textbox("manual", undef, 40,
+                    undef, undef, "placeholder='-m u:root:rw-,g:stream:r-x -R'"),
+              html => 1 } );
+        }
 
     # Interface for Bootstrap powered themes
     if ($tinfo{'bootstrap'}) {
@@ -486,11 +498,23 @@ foreach my $fref (@{$files_to_extract}) {
     my $cwd = $fref->{'path'};
     my $name = $fref->{'file'};
 
-    my $extract_to = "$cwd/" . fileparse("$cwd/$name", qr/\.[^.]*/);
-    if (-e $extract_to && !$in{'overwrite_existing'}) {
-        $extract_to .= "_" . int(rand(1000)) . $$;
+    my $extract_to = $cwd;
+    if (!$in{'overwrite_existing'}) {
+        my ($file_name) = $name =~ /(?|(.*)\.((?|tar|wbm|wbt)\..*)|(.*)\.([a-zA-Z]+\.(?|gpg|pgp))|(.*)\.(?=(.*))|(.*)())/;
+        if (!-e "$cwd/$file_name") {
+            $extract_to = "$cwd/$file_name";
+        } else {
+            my $__ = 1;
+            for (;;) {
+                my $new_dir_name = "$file_name(" . $__++ . ")";
+                if (!-e "$cwd/$new_dir_name") {
+                    $extract_to = "$cwd/$new_dir_name";
+                    last;
+                }
+            }
+        }
     }
-    mkdir($extract_to);
+    mkdir("$extract_to");
     
     my $archive_type = mimetype($cwd . '/' . $name);
 

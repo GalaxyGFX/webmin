@@ -420,8 +420,7 @@ sub parse_mail
 return if ($_[0]->{'parsed'}++);
 local $ct = $_[0]->{'header'}->{'content-type'};
 local (@attach, $h, $a);
-if ($ct =~ /multipart\/(\S+)/i && ($ct =~ /boundary="([^"]+)"/i ||
-				   $ct =~ /boundary=([^;\s]+)/i)) {
+if ($ct =~ /boundary="([^"]+)"/i || $ct =~ /boundary=([^;\s]+)/i) {
 	# Multipart MIME message
 	local $bound = "--".$1;
 	local @lines = $_[3] ? split(/\n/, $_[0]->{'body'})
@@ -455,6 +454,9 @@ if ($ct =~ /multipart\/(\S+)/i && ($ct =~ /boundary="([^"]+)"/i ||
 		if ($attach->{'header'}->{'content-type'} =~ /^([^;\s]+)/) {
 			$attach->{'type'} = lc($1);
 			}
+		elsif ($ct !~ /^multipart\/\S+/ && $ct =~ /^([^;\s]+)/) {
+                        $attach->{'type'} = lc($1);
+                        }
 		else {
 			$attach->{'type'} = 'text/plain';
 			}
@@ -1475,12 +1477,22 @@ sub simplify_date
 local ($date, $fmt) = @_;
 local $u = &parse_mail_date($date);
 if ($u) {
-	$fmt ||= $userconfig{'date_fmt'} || $config{'date_fmt'} || "dmy";
-	local $strf = $fmt eq "dmy" ? "%d/%m/%Y" :
-		      $fmt eq "mdy" ? "%m/%d/%Y" :
-				      "%Y/%m/%d";
-	return strftime("$strf %H:%M", localtime($u));
-        }
+	my $locale;
+	if ($userconfig{'date_fmt'} eq 'auto' || $config{'date_fmt'} eq 'auto') {
+		eval "use DateTime; use DateTime::Locale; use DateTime::TimeZone;";
+		if (!$@) {
+			$locale++;
+			return &make_date($u, undef, $fmt);
+			}
+		}
+	if (!$locale) {
+		$fmt ||= $userconfig{'date_fmt'} || $config{'date_fmt'} || "dmy";
+		local $strf = $fmt eq "dmy" ? "%d/%m/%Y" :
+			      $fmt eq "mdy" ? "%m/%d/%Y" :
+					      "%Y/%m/%d";
+		return strftime("$strf %H:%M", localtime($u));
+		}
+	}
 elsif ($date =~ /^(\S+),\s+0*(\d+)\s+(\S+)\s+(\d+)\s+(\d+):(\d+)/) {
 	return "$2/$3/$4 $5:$6";
 	}
@@ -1530,7 +1542,7 @@ return $noescape ? $rv : &html_escape($rv);
 # Simplifies and truncates a subject header for display in the mail list
 sub simplify_subject
 {
-return &convert_header_for_display($_[0], 80);
+return &convert_header_for_display($_[0], int($in{'simplify-subject-length'}) || 100);
 }
 
 # quoted_decode(text)

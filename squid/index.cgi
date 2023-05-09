@@ -4,6 +4,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './squid-lib.pl';
 our (%in, %text, %config, %access, $module_name, $module_config_directory);
 
@@ -43,10 +45,10 @@ if ($ver =~ /version\s+(\S+)/i) {
 	$ver = $1;
 	}
 my $squid_version;
-if ($ver =~ /Version\s+([2-4]\.[0-9]+)/ ||
+if ($ver =~ /Version\s+([2-5]\.[0-9]+)/ ||
     $ver =~ /^(1\.1)\.\d+/ ||
     $ver =~ /^(1)\.NOVM/ ||
-    $ver =~ /^([2-4]\.[0-9]+)/) {
+    $ver =~ /^([2-5]\.[0-9]+)/) {
 	# Save version number
 	open(VERSION, ">$module_config_directory/version");
 	print VERSION $1,"\n";

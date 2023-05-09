@@ -1,5 +1,7 @@
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 
 do 'bind8-lib.pl';
 # Globals from bind8-lib.pl
@@ -31,7 +33,8 @@ elsif ($cgi eq 'edit_text.cgi' || $cgi eq 'edit_soa.cgi' ||
        $cgi eq 'edit_zonekey.cgi' || $cgi eq 'edit_recs.cgi' ||
        $cgi eq 'edit_record.cgi') {
 	# Find a master zone
-	my ($z) = grep { $_->{'type'} eq 'master' &&
+	my ($z) = grep { ($_->{'type'} eq 'master' ||
+			  $_->{'type'} eq 'primary') &&
 			 &can_edit_zone($_) } &list_zone_names();
 	return 'none' if (!$z);
 	my $rv = 'zone='.$z->{'zone'}.

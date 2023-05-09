@@ -126,31 +126,56 @@ return $rv;
 # or 0 on failure
 sub execute_before
 {
-if ($_[0]->{'before'}) {
-	local $h = $_[1];
-	&open_execute_command(before, "($_[0]->{'before'}) 2>&1 </dev/null", 1);
+my ($dump, $h, $esc) = @_;
+if ($dump->{'before'}) {
+	&set_dump_envs($dump);
+	&open_execute_command(before, "($dump->{'before'}) 2>&1 </dev/null", 1);
 	while(<before>) {
-		print $h $_[2] ? &html_escape($_) : $_;
+		print $h $esc ? &html_escape($_) : $_;
 		}
 	close(before);
+	&reset_dump_envs();
 	return !$?;
 	}
 return 1;
 }
 
 # execute_after(&dump, handle, escape)
+# Executes the before-dump command, and prints the output. Returns 1 on success
+# or 0 on failure
 sub execute_after
 {
-if ($_[0]->{'after'}) {
-	local $h = $_[1];
-	&open_execute_command(after, "($_[0]->{'after'}) 2>&1 </dev/null", 1);
+my ($dump, $h, $esc) = @_;
+if ($dump->{'after'}) {
+	&set_dump_envs($dump);
+	&open_execute_command(after, "($dump->{'after'}) 2>&1 </dev/null", 1);
 	while(<after>) {
-		print $h $_[2] ? &html_escape($_) : $_;
+		print $h $esc ? &html_escape($_) : $_;
 		}
 	close(after);
+	&reset_dump_envs();
 	return !$?;
 	}
 return 1;
+}
+
+# set_dump_envs(&dump)
+# Sets FSDUMP_ environment variables based on attributes of the dump
+sub set_dump_envs
+{
+my ($dump) = @_;
+foreach my $k (keys %$dump) {
+	$ENV{'FSDUMP_'.uc($k)} = $dump->{$k};
+	}
+}
+
+# reset_dump_envs()
+# Clear all variables set by set_dump_envs
+sub reset_dump_envs
+{
+foreach my $k (keys %ENV) {
+	delete($ENV{$k}) if ($k =~ /^FSDUMP_/);
+	}
 }
 
 # running_dumps(&procs)
@@ -247,7 +272,7 @@ local ($wrong_password, $got_login, $connect_failed);
 local $out;
 local $stars = ("*" x length($pass));
 while(1) {
-	local $rv = &wait_for($cfh, "password:", "yes\\/no", "(^|\\n)\\s*Permission denied.*\n", "ssh: connect.*\n", ".*\n");
+	local $rv = &wait_for($cfh, "password:|Password\\s+for\\s+\\S+:", "yes\\/no", "(^|\\n)\\s*Permission denied.*\n", "ssh: connect.*\n", ".*\n");
 	if ($wait_for_input !~ /^\s*DUMP:\s+ACLs\s+in\s+inode/i) {
 		$wait_for_input =~ s/\Q$pass\E/$stars/g;
 		if ($fhmode) {

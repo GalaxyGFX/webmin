@@ -100,8 +100,10 @@ sub is_existing_parameter
 ## modified to allow main_parameter:subparameter 
 sub get_current_value
 {
+my ($n, $nodef) = @_;
+
 # First try to get the value from main.cf directly
-my ($name,$key)=split /:/,$_[0];
+my ($name, $key) = split(/:/, $n);
 my $lref = &read_file_lines($config{'postfix_config_file'});
 my $out;
 my ($begin_flag, $end_flag);
@@ -127,14 +129,14 @@ foreach my $l (@$lref) {
 		last;
 		}
 	}
-if (!defined($out) && !$_[1]) {
+if (!defined($out) && !$nodef) {
 	# Fall back to asking Postfix
 	# -h tells postconf not to output the name of the parameter
 	my $err;
 	&execute_command("$config{'postfix_config_command'} -c $config_dir -h ".
 			 quotemeta($name), undef, \$out, \$err, 0, 1);
 	if ($?) {
-		&error(&text('query_get_efailed', $name, $out));
+		&error(&text('query_get_efailed', $name, $out || $err));
 		}
 	elsif ($out =~ /warning:.*unknown\s+parameter/ ||
 	       $err =~ /warning:.*unknown\s+parameter/) {
@@ -694,6 +696,12 @@ sub regenerate_header_table
     &regenerate_any_table("header_checks");
 }
 
+# regenerate_mime_header_table()
+sub regenerate_mime_header_table
+{
+    &regenerate_any_table("mime_header_checks");
+}
+
 # regenerate_body_table()
 sub regenerate_body_table
 {
@@ -738,6 +746,7 @@ sub regenerate_dependent_table
 sub regenerate_any_table
 {
     my ($name, $force, $after, $base64) = @_;
+    $base64 = 0 if ($postfix_version < 3.4);
     my @files;
     if ($force) {
 	@files = map { [ "hash", $_ ] } @$force;
@@ -1042,13 +1051,14 @@ sub generate_map_edit
 }
 
 
-# create_mapping(map, &mapping, [&force-files], [force-map])
+# create_mapping(map, &mapping, [&force-files], [force-map], [&before])
 sub create_mapping
 {
-&get_maps($_[0], $_[2], $_[3]);	# force cache init
-my @maps_files = $_[2] ? (map { [ "hash", $_ ] } @{$_[2]}) :
-		 $_[3] ? &get_maps_types_files($_[3]) :
-		         &get_maps_types_files(&get_real_value($_[0]));
+my ($mapname, $map, $forcefile, $forcemap, $before) = @_;
+&get_maps($mapname, $forcefile, $forcemap);	# force cache init
+my @maps_files = $forcefile ? (map { [ "hash", $_ ] } @$forcefile) :
+		 $forcemap ? &get_maps_types_files($forcemap) :
+		         &get_maps_types_files(&get_real_value($mapname));
 
 # If multiple maps, find a good one to add to .. avoid regexp if we can
 my $last_map;
@@ -1069,11 +1079,22 @@ my ($maps_type, $maps_file) = @$last_map;
 
 if (&file_map_type($maps_type)) {
 	# Adding to a regular file
-	local $lref = &read_file_lines($maps_file);
-	$_[1]->{'line'} = scalar(@$lref);
-	push(@$lref, &make_table_comment($_[1]->{'cmt'}));
-	push(@$lref, "$_[1]->{'name'}\t$_[1]->{'value'}");
-	$_[1]->{'eline'} = scalar(@$lref)-1;
+	my $lref = &read_file_lines($maps_file);
+	my @nl = &make_table_comment($map->{'cmt'});
+	push(@nl, "$map->{'name'}\t$map->{'value'}");
+	if ($before) {
+		# Add before an existing map entry
+		$map->{'line'} = $before->{'line'};
+		$map->{'eline'} = $map->{'line'} + scalar(@nl) - 1;
+		splice(@$lref, $map->{'line'}, 0, @nl);
+		&renumber_list($maps_cache{$mapname}, $map, scalar(@nl));
+		}
+	else {
+		# Add at the end of the file
+		$map->{'line'} = scalar(@$lref);
+		$map->{'eline'} = $map->{'line'} + scalar(@nl) - 1;
+		push(@$lref, @nl);
+		}
 	&flush_file_lines($maps_file);
 	}
 elsif ($maps_type eq "mysql") {
@@ -1085,13 +1106,13 @@ elsif ($maps_type eq "mysql") {
 				   "(".$conf->{'where_field'}.",".
 					$conf->{'select_field'}.") values (".
 				   "?, ?)");
-	if (!$cmd || !$cmd->execute($_[1]->{'name'}, $_[1]->{'value'})) {
+	if (!$cmd || !$cmd->execute($map->{'name'}, $map->{'value'})) {
 		&error(&text('mysql_eadd',
 			     "<tt>".&html_escape($dbh->errstr)."</tt>"));
 		}
 	$cmd->finish();
 	$dbh->disconnect();
-	$_[1]->{'key'} = $_[1]->{'name'};
+	$map->{'key'} = $map->{'name'};
 	}
 elsif ($maps_type eq "ldap") {
 	# Adding to an LDAP database
@@ -1102,11 +1123,11 @@ elsif ($maps_type eq "ldap") {
 				      "inetLocalMailRecipient");
 	local @attrs = ( "objectClass", \@classes );
 	local $name_attr = &get_ldap_key($conf);
-	push(@attrs, $name_attr, $_[1]->{'name'});
+	push(@attrs, $name_attr, $map->{'name'});
 	push(@attrs, $conf->{'result_attribute'} || "maildrop",
-		     $_[1]->{'value'});
+		     $map->{'value'});
 	push(@attrs, &split_props($config{'ldap_attrs'}));
-	local $dn = &make_map_ldap_dn($_[1], $conf);
+	local $dn = &make_map_ldap_dn($map, $conf);
 	if ($dn =~ /^([^=]+)=([^, ]+)/ && !&in_props(\@attrs, $1)) {
 		push(@attrs, $1, $2);
 		}
@@ -1120,15 +1141,15 @@ elsif ($maps_type eq "ldap") {
 		&error(&text('ldap_eadd', "<tt>$dn</tt>",
 			     "<tt>".&html_escape($rv->error)."</tt>"));
 		}
-	$_[1]->{'dn'} = $dn;
+	$map->{'dn'} = $dn;
 	}
 
 # Update the in-memory cache
-$_[1]->{'map_type'} = $maps_type;
-$_[1]->{'map_file'} = $maps_file;
-$_[1]->{'file'} = $maps_file;
-$_[1]->{'number'} = scalar(@{$maps_cache{$_[0]}});
-push(@{$maps_cache{$_[0]}}, $_[1]);
+$map->{'map_type'} = $maps_type;
+$map->{'map_file'} = $maps_file;
+$map->{'file'} = $maps_file;
+$map->{'number'} = scalar(@{$maps_cache{$mapname}});
+push(@{$maps_cache{$mapname}}, $map);
 }
 
 
@@ -1181,8 +1202,11 @@ elsif ($_[1]->{'map_type'} eq 'ldap') {
 	ref($ldap) || &error($ldap);
 	local $rv = $ldap->delete($_[1]->{'dn'});
 	if ($rv->code) {
-		&error(&text('ldap_edelete', "<tt>$_[1]->{'dn'}</tt>",
-			     "<tt>".&html_escape($rv->error)."</tt>"));
+		my $err = $rv->error;
+		if ($err !~ /No such object/i) {
+			&error(&text('ldap_edelete', "<tt>$_[1]->{'dn'}</tt>",
+				     "<tt>".&html_escape($err)."</tt>"));
+			}
 		}
 	}
 
@@ -1516,7 +1540,7 @@ sub before_save
 {
 if ($config{'check_config'} && !defined($save_file)) {
 	$save_file = &transname();
-	&execute_command("cp $config{'postfix_config_file'} $save_file");
+	&copy_source_dest($config{'postfix_config_file'}, $save_file);
 	}
 }
 
@@ -1525,11 +1549,12 @@ sub after_save
 if (defined($save_file)) {
 	local $err = &check_postfix();
 	if ($err) {
-		&execute_command("mv $save_file $config{'postfix_config_file'}");
+		&copy_source_dest($save_file, $config{'postfix_config_file'});
+		&unlink_file($save_file);
 		&error(&text('after_err', "<pre>$err</pre>"));
 		}
 	else {
-		unlink($save_file);
+		&unlink_file($save_file);
 		$save_file = undef;
 		}
 	}
@@ -1550,7 +1575,7 @@ if ($postfix_version >= 2.1 && $v =~ /\$/) {
 		return $out;
 		}
 	}
-$v =~ s/\$(\{([^\}]+)\}|([A-Za-z0-9\.\-\_]+))/get_real_value($2 || $3)/ge;
+$v =~ s/\$(\{([^\}]+)\}|([A-Za-z0-9\.\-\_]+))/get_real_value($2 || $3) || '$'.$1/ge;
 return $v;
 }
 
@@ -1598,6 +1623,24 @@ if ($_[1]->{'value'}) {
 	$rv .= " ".$_[1]->{'value'};
 	}
 return $rv;
+}
+
+# Functions for editing the mime_header_checks map nicely
+sub edit_name_mime_header_checks
+{
+return &edit_name_header_checks(@_);
+}
+sub parse_name_mime_header_checks
+{
+return &parse_name_header_checks(@_);
+}
+sub edit_value_mime_header_checks
+{
+return &edit_value_header_checks(@_);
+}
+sub parse_value_mime_header_checks
+{
+return &parse_value_header_checks(@_);
 }
 
 # Functions for editing the body_checks map (same as header_checks)
@@ -2317,7 +2360,8 @@ sub file_map_type
 {
 local ($type) = @_;
 return 1 if ($type eq 'hash' || $type eq 'regexp' || $type eq 'pcre' ||
-	     $type eq 'btree' || $type eq 'dbm' || $type eq 'cidr');
+	     $type eq 'btree' || $type eq 'dbm' || $type eq 'cidr' ||
+	     $type eq 'lmdb');
 }
 
 # in_props(&props, name)

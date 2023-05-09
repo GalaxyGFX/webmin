@@ -38,13 +38,10 @@ else {
 	&save_directive($conf, "default_mail_env", $env eq "" ? undef : $env);
 	}
 
-# Check and idle intervals
-$in{'check'} != 2 || $in{'checki'} =~ /^\d+$/ || &error($text{'mail_echeck'});
-&save_directive($conf, "mailbox_check_interval",
-	$in{'check'} == 1 ? 0 : $in{'check'} == 2 ? $in{'checki'} : undef);
+# Idle intervals
 $in{'idle'} != 2 || $in{'idlei'} =~ /^\d+$/ || &error($text{'mail_eidle'});
 &save_directive($conf, "mailbox_idle_check_interval",
-	$in{'idle'} == 1 ? 0 : $in{'idle'} == 2 ? $in{'idlei'} : undef);
+	$in{'idle'} == 1 ? "520 weeks" : $in{'idle'} == 2 ? "$in{'idlei'} seconds" : undef);
 
 # Yes/no options
 &save_directive($conf, "mail_full_filesystem_access",

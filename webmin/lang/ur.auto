@@ -19,8 +19,6 @@ access_all=سبھی پتوں سے اجازت دیں
 access_allow=صرف درج پتے سے اجازت دیں
 access_deny=درج پتوں سے انکار کریں
 access_libwrap=Also check TCP-wrappers <tt>hosts.allow</tt> and <tt>hosts.deny</tt> files?
-access_elibwrap=IP access control using TCP-wrappers is not available, as the $1 Perl module is not installed.
-access_libwrapcpan=<a href='$1'>Click here</a> to have Webmin automatically install the missing Perl module.
 access_err=رسائی کی فہرست کو اپ ڈیٹ کرنے میں ناکام
 access_enone=کوئی پتہ داخل نہیں ہوا
 access_enet='$1' is not a valid network address
@@ -69,6 +67,10 @@ bind_maxconns_per_net=فی نیٹ ورک میں زیادہ سے زیادہ سم�
 bind_emaxconns=زیادہ سے زیادہ سمورتی کنکشن 1 سے زیادہ تعداد میں ہونا چاہئے
 bind_emaxconns_per_ip=فی IP میں زیادہ سے زیادہ سمورتی کنیکشن 1 سے زیادہ تعداد میں ہونا چاہئے
 bind_emaxconns_per_net=ہر نیٹ ورک میں زیادہ سے زیادہ سمورتی کنیکشن 1 سے زیادہ ہونی چاہئے
+bind_maxlifetime=زیادہ سے زیادہ Webmin عمل زندگی بھر
+bind_maxlifetime_def=لا محدود
+bind_maxlifetime_secs=سیکنڈ
+bind_emaxlifetime=عمل کی زیادہ سے زیادہ عمر 60 سیکنڈ سے زیادہ ہونی چاہیے۔
 
 log_title=لاگنگ
 log_desc=Webmin can be configured to write a log of web server hits, in the standard CLF log file format. If logging is enabled, you can also choose whether IP addresses or hostnames are recorded, and how often the log file is cleared. When enabled, logs are written to the file $1.
@@ -188,11 +190,6 @@ ui_edbwidth=گمشدہ یا غلط انتخاب کنندہ ونڈو کی چوڑ�
 ui_edbheight=گمشدہ یا غلط انتخاب کنندہ ونڈو قد
 ui_showlogin=صفحہ کے عنوان کیلئے صارف نام تیار کریں؟
 ui_showhost=صفحہ کے عنوان پر میزبان نام تیار کریں؟
-ui_dateformat=ظاہر شدہ تاریخوں کا فارمیٹ
-ui_dateformat_dd/mon/yyyy=دسمبر / سوموار / یحیی (یعنی 16 / ستمبر / 2001)
-ui_dateformat_dd/mm/yyyy=دسمبر / ملی میٹر / یحیی (یعنی 16/09/2001)
-ui_dateformat_mm/dd/yyyy=ملی میٹر / ڈیڈی / یحیی (یعنی 09/16/2001)
-ui_dateformat_yyyy/mm/dd=یار / ملی میٹر / ڈیڈی (جیسے 2001/09/16)
 ui_ehostnamedisplay=لاپتہ یا غلط ڈسپلے ہوسٹ نام
 
 mods_title=ویبمین ماڈیولز
@@ -310,12 +307,14 @@ os_value=قدر
 os_eversion=آپریٹنگ سسٹم کا ورژن غائب ہے
 os_eiversion=اندرونی آپریٹنگ سسٹم کا ورژن غائب ہے
 os_incorrect=آپریٹنگ سسٹم$1 کو ورژن$2 میں اپ گریڈ کر دیا گیا ہے۔
+os_release_notes=ریلیز نوٹس
 os_fix=آپریٹنگ سسٹم کا پتہ لگائیں
 os_usermin=یوزر مین OS کو بھی اپ ڈیٹ کریں
 
-lang_title=زبان
-lang_title2=ویبمین زبان
-lang_lang=زبان میں ڈسپلے کریں
+lang_title=زبان اور مقام
+lang_title2=ویبمن زبان اور مقام
+lang_lang=زبان
+lang_locale=لوکیل
 lang_intro=یہ صفحہ آپ کو یہ منتخب کرنے کی اجازت دیتا ہے کہ ویبمین عنوان ، اشارے اور پیغامات کی نمائش کے لئے کس زبان کا استعمال کرے گی
 lang_ok=زبان تبدیل کریں
 lang_accept=براؤزر کے ذریعہ مخصوص کردہ زبان کا استعمال کریں؟
@@ -324,6 +323,8 @@ lang_chardef=زبان سے طے شدہ
 lang_charover=زبردستی کیریکٹر سیٹ
 lang_err=زبان بچانے میں ناکام
 lang_echarset=لاپتہ یا غلط نظر آنے والا کردار کا سیٹ
+lang_dateformat=تاریخیں ڈسپلے فارمیٹ
+lang_dateformat_dd/mon/yyyy=dd/mon/yyyy (یعنی 16/Sep/2001)
 
 ssl_title=SSL خفیہ کاری
 ssl_essl=The Net::SSLeay perl module does not appear to be installed on your system. To install the OpenSSL library and Net::SSLeay, follow <a href='$1'>these instructions</a> from the Webmin website.
@@ -337,11 +338,12 @@ ssl_key=نجی کلیدی فائل
 ssl_cert=سند کی فائل
 ssl_cert_def=نجی کلید کی حیثیت سے ایک ہی فائل
 ssl_cert_oth=علیحدہ فائل
-ssl_redirect=غیر ایس ایس ایل درخواستوں کو ایس ایس ایل وضع میں ری ڈائریکٹ کریں؟
 ssl_deny=SSL پروٹوکول ورژن مسترد کریں
 ssl_compression=کمپریسڈ ایس ایس ایل کنیکشن کی اجازت دیں؟
 ssl_honorcipherorder=سرور سے طے شدہ سائفر آرڈر کا زبردستی استعمال؟
 ssl_extracas=Additional certificate files<br>(for chained certificates)
+ssl_hsts=HSTS ہیڈر کے ساتھ SSL کو نافذ کریں۔
+ssl_redirect=غیر ایس ایس ایل درخواستوں کو ایس ایس ایل وضع میں ری ڈائریکٹ کریں؟
 ssl_extracasdef=عالمی SSL ترتیبات کی طرح
 ssl_extracasnone=اس IP پتے کے لئے کوئی نہیں
 ssl_extracasbelow=نیچے داخل ہوا ..
@@ -496,10 +498,10 @@ upgrade_egzip=Failed to gunzip file : $1
 upgrade_etar=ایک درست ویبمین ٹار فائل نہیں ہے
 upgrade_euntar=Failed to untar file : $1
 upgrade_emod=File is a Webmin module, not a complete Webmin upgrade. You may want to use the <a href='$1'>Webmin Modules</a> page to install it.
-upgrade_setup=Webmin کو اپ گریڈ کرنے کے لئے setup.sh اسکرپٹ چل رہا ہے.. براہ کرم ایک منٹ انتظار کریں جب تک کہ یہ جاری رکھنے سے پہلے مکمل نہ ہوجائے۔
-upgrade_setuprpm=ویب مین کو اپ گریڈ کرنے کے لئے RPM چل رہا ہے.. براہ کرم جاری رکھنے سے پہلے ایک منٹ انتظار کریں۔
-upgrade_setupdeb=ویب مین کو اپ گریڈ کرنے کے لئے ڈی پی کے جی چلا رہے ہیں.. براہ کرم جاری رکھنے سے پہلے ایک منٹ انتظار کریں۔
-upgrade_setuppackage=ویب مین کو اپ گریڈ کرنے کے لئے پی جی جی ڈی ڈی چل رہا ہے.. براہ کرم ایک منٹ انتظار کریں جب تک کہ یہ جاری رکھنے سے پہلے مکمل نہ ہوجائے۔
+upgrade_setup=Running <tt>setup.sh</tt> script to upgrade Webmin ..
+upgrade_setuprpm=Running <tt>RPM</tt> to upgrade Webmin ..
+upgrade_setupdeb=Running <tt>DPKG</tt> to upgrade Webmin ..
+upgrade_setuppackage=Running <tt>pkgadd</tt> to upgrade Webmin ..
 upgrade_esolaris=جب آپ نے سولاریس پیکیج سے انسٹال کیا ہے تو فی الحال ویبمین کی اپ گریڈ کی خصوصیت کام نہیں کرتی ہے۔ براہ کرم اس کے بجائے دستی طور پر اپ گریڈ کریں۔
 upgrade_ezip=جب آپ نے ونڈوز پر انسٹال کیا ہے تو ویبمین کی اپ گریڈ کی خصوصیت فی الحال کام نہیں کرتی ہے۔ براہ کرم اس کے بجائے دستی طور پر اپ گریڈ کریں۔
 upgrade_eportage=جب آپ پورٹیج پیکیج سے انسٹال کرتے ہیں تو ویبمین کی اپ گریڈ کی خصوصیت فی الحال کام نہیں کرتی ہے۔ براہ کرم اس کے بجائے پورٹیج ٹولز کا استعمال کرکے اپ گریڈ کریں۔
@@ -650,11 +652,13 @@ session_pmode0=میعاد ختم ہونے والے پاس ورڈ والے صار
 session_pmode1=میعاد ختم ہونے والے پاس ورڈ والے صارفین کو ہمیشہ اجازت دیں
 session_pmode2=میعاد ختم ہونے والے پاس ورڈ والے صارفین کو نیا داخل کرنے کا اشارہ کریں
 session_md5=ویبمین پاس ورڈ ہیشنگ کی شکل
-session_md5off=Use standard Unix <tt>crypt</tt> encryption
-session_md5on=MD5 خفیہ کاری کا استعمال کریں
-session_sha512=SHA512 خفیہ کاری کا استعمال کریں
-session_emd5mod=MD5 encryption cannot be used, as Perl $1 module is not installed.
-session_esha512mod=SHA512 encryption cannot be used, as Perl $1 module is not installed.
+session_md5off=خود بخود تعین کریں۔
+session_md5on=Use <tt>MD5</tt> hashing format
+session_sha512=Use <tt>SHA512</tt> hashing format
+session_yescrypt=Use <tt>yescrypt</tt> hashing format
+session_emd5mod=MD5 ہیشنگ فارمیٹ استعمال نہیں کیا جا سکتا، کیونکہ Perl $1 ماڈیول انسٹال نہیں ہے۔
+session_esha512mod=SHA512 ہیشنگ فارمیٹ استعمال نہیں کیا جا سکتا، کیونکہ پرل $1 ماڈیول انسٹال نہیں ہے۔
+session_eyescrypt=yescrypt hashing فارمیٹ استعمال نہیں کیا جا سکتا، کیونکہ Perl $1 ماڈیول انسٹال نہیں ہے۔
 session_blocklock=ناکام لاگ ان والے صارفین کو بھی لاک کریں
 session_passapi=ریموٹ پاس ورڈ چینج API کو فعال کریں؟
 session_passapi0=API غیر فعال
@@ -876,6 +880,7 @@ advanced_eprecache=پری کیشے میں شیل کے نمونوں کی گمشد
 advanced_err=جدید اختیارات کو بچانے میں ناکام
 advanced_etemp=غائب یا غیر عارضی عارضی فائلوں کی ڈائرکٹری
 advanced_etdir=Missing or non-existant temporary files directory for $1
+advanced_etempallowed=عارضی فائلوں کی ڈائرکٹری $1 ایک سسٹم ڈائرکٹری ہے۔
 advanced_pass=Make password available to Webmin programs?<br><font size=-1>(Does not work when session authentication is enabled)</font>
 advanced_tempmods=فی ماڈیول عارضی ڈائریکٹریز
 advanced_tmod=ماڈیول
@@ -1079,6 +1084,16 @@ web_expirespaths=URL کے راستے پر مبنی کلائنٹ سائیڈ کی�
 web_expirespath=راستہ باقاعدہ اظہار
 web_expirestime=سیکنڈ میں کیش وقت
 web_eexpires2=Missing or non-numeric client side cache time in row $1
+web_rediruurl=پوسٹ لاگ ان سوئچ ری ڈائریکٹ URL
+web_redirdesc=اندرونی ری ڈائریکٹ URL کو اوور رائیڈ کرتا ہے۔
+web_eredirurl='$1' خالی جگہوں پر مشتمل ہے اور یہ درست URL نہیں ہے۔
+web_redirhost=میزبان کو ری ڈائریکٹ کریں۔
+web_eredirhost='$1' ایک درست میزبان نام نہیں ہے۔
+web_redirport=ری ڈائریکٹ پورٹ
+web_redirpref=ری ڈائریکٹ سابقہ
+web_eredirpref=سابقہ فارورڈ سلیش سے شروع ہونا چاہیے۔
+web_eredirpref2=پریفکس میں خالی جگہیں نہیں ہونی چاہئیں
+web_redirssl=SSL کو ری ڈائریکٹ کریں۔
 
 webmincron_title=ویبمین کے شیڈول کردہ افعال
 webmincron_emodule=ویبمین کرون جابس ماڈیول انسٹال نہیں ہوا ہے!

@@ -3,6 +3,8 @@
 # A form for creating a new slave or stub zone
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %config);
 
 require './bind8-lib.pl';
@@ -50,12 +52,12 @@ print &ui_table_row($text{'slave_file'},
 print &ui_table_row($text{'slave_masters'},
 	&ui_textarea("masters",
 		     join("\n", split(/\s+/, $config{'default_master'})),
-		     4, 30));
+		     4, 30), 3);
 
 # Master port
 print &ui_table_row($text{'slave_masterport'},
 	&ui_opt_textbox("port", undef, 5, $text{'default'},
-		        $text{'slave_master_port'}));
+		        $text{'slave_master_port'}), 3);
 
 # Create on slave servers?
 my @servers = grep { $_->{'sec'} } &list_slave_servers();

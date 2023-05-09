@@ -3,6 +3,8 @@
 BEGIN { push(@INC, ".."); };
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 use WebminCore;
 &init_config();
 our ($module_root_directory, %text, %config, %gconfig, $base_remote_user);
@@ -500,7 +502,14 @@ else {
 # Force the fail2ban server to re-read its config
 sub restart_fail2ban_server
 {
-my $out = &backquote_logged("$config{'client_cmd'} reload 2>&1 </dev/null");
+my ($force_restart) = @_;
+my $out;
+$out = &backquote_logged("$config{'client_cmd'} reload 2>&1 </dev/null")
+	if (!$force_restart);
+if ($? || $force_restart) {
+	&stop_fail2ban_server();
+	$out = &start_fail2ban_server();
+}
 return $? ? $out : undef;
 }
 
@@ -509,8 +518,8 @@ return $? ? $out : undef;
 sub list_all_config_files
 {
 my @rv;
-push(@rv, "$config{'config_dir'}/fail2ban.conf");
 push(@rv, "$config{'config_dir'}/fail2ban.local");
+push(@rv, "$config{'config_dir'}/fail2ban.conf");
 push(@rv, glob("$config{'config_dir'}/filter.d/*.conf"));
 push(@rv, glob("$config{'config_dir'}/filter.d/*.local"));
 push(@rv, glob("$config{'config_dir'}/action.d/*.conf"));
@@ -519,7 +528,7 @@ push(@rv, "$config{'config_dir'}/jail.conf");
 push(@rv, "$config{'config_dir'}/jail.local");
 push(@rv, glob("$config{'config_dir'}/jail.d/*.conf"));
 push(@rv, glob("$config{'config_dir'}/jail.d/*.local"));
-return grep { -r $_ } @rv;
+return grep { -r $_ || $_ =~ /fail2ban\.local$/ } @rv;
 }
 
 sub lock_all_config_files
@@ -544,6 +553,28 @@ sub get_fail2ban_version
 {
 my $out = &backquote_command("$config{'client_cmd'} -V 2>/dev/null </dev/null");
 return !$? && $out =~ /v([0-9\.]+)/ ? $1 : undef;
+}
+
+# Unblock given IP in given jail
+sub unblock_jailed_ip
+{
+my ($jail, $ip) = @_;
+my $cmd = "$config{'client_cmd'} set ".quotemeta($jail)." unbanip ".quotemeta($ip)." 2>&1 </dev/null";
+my $out = &backquote_logged($cmd);
+if ($?) {
+	&error(&text('status_err_unban', &html_escape($ip)) . " : $out");
+	}
+}
+
+# Unblock all IPs in given jail
+sub unblock_jail
+{
+my ($jail) = @_;
+my $cmd = "$config{'client_cmd'} reload --unban ".quotemeta($jail)." 2>&1 </dev/null";
+my $out = &backquote_logged($cmd);
+if ($?) {
+	&error(&text('status_err_unbanjail', &html_escape($jail)) . " : $out");
+	}
 }
 
 1;

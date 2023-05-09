@@ -3,6 +3,8 @@
 BEGIN { push(@INC, ".."); };
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 use WebminCore;
 &init_config();
 do 'md5-lib.pl';
@@ -76,6 +78,36 @@ $out =~ s/\r|\n//g;
 return split(/\s+/, $out);
 }
 
+# list_firewalld_service_desc(service)
+# Returns a hashref of ports and protocols 
+# for in-built FirewallD service
+sub list_firewalld_service_desc
+{
+my ($service) = @_;
+$service =~ s/[^A-Za-z0-9\-]//g;
+# This is native way but too slow
+# my $out = &backquote_command("$config{'firewall_cmd'} --service=".quotemeta($service)." --get-ports --permanent </dev/null 2>&1");
+
+# Check for file in directory containing all services as xml files
+my $services_dir = "/usr/lib/firewalld/services/";
+my $service_file = "$services_dir/$service.xml";
+my @ports;
+my @protos;
+if (-r $service_file) {
+	my $lref = &read_file_lines($service_file, 1);
+	foreach my $l (@{$lref}) {
+		$l =~ /<port\s+protocol=["'](?<proto>\S+)["']\s+port=["'](?<port>[\d-]+)["']\/>/;
+		my $port = "$+{port}";
+		my $proto = "$+{proto}";
+		push(@ports, $port) if ($port);
+		push(@protos, $proto) if ($port && $proto);
+		}
+	}
+@ports = &unique(@ports);
+@protos = &unique(@protos);
+return {'ports' => join(", ", @ports), 'protocols' => uc(join('/', @protos))};
+}
+
 # list_firewalld_services_with_ports()
 # Returns an array of service names and descriptions
 sub list_firewalld_services_with_ports
@@ -90,7 +122,12 @@ foreach my $s (&list_firewalld_services()) {
 		push(@rv, [ $s, $s." (".$n[2]." ".uc($n[3]).")" ]);
 		}
 	else {
-		push(@rv, [ $s, $s ]);
+		my $sportsprotos = &list_firewalld_service_desc($s);
+		my $sports = $sportsprotos->{'ports'};
+		my $sprotocols = $sportsprotos->{'protocols'};
+		my $sdesc;
+		$sdesc = " ($sports $sprotocols)" if ($sports);
+		push(@rv, [ $s, "$s$sdesc" ]);
 		}
 	}
 return @rv;
@@ -195,8 +232,10 @@ return ($w{'port'}, $w{'proto'}, $w{'toport'}, $w{'toaddr'});
 # Make the current saved config active
 sub apply_firewalld
 {
-my $out = &backquote_logged("$config{'firewall_cmd'} --reload 2>&1");
-return $? ? $out : undef;
+&foreign_require("init");
+my ($ok, $err) = &init::restart_action($config{'init_name'});
+&restart_firewalld_dependent();
+return $ok ? undef : $err;
 }
 
 # stop_firewalld()
@@ -214,7 +253,22 @@ sub start_firewalld
 {
 &foreign_require("init");
 my ($ok, $err) = &init::start_action($config{'init_name'});
+&restart_firewalld_dependent();
 return $ok ? undef : $err;
+}
+
+# restart_firewalld_dependent()
+# Restarts dependent services
+sub restart_firewalld_dependent
+{
+if (&foreign_exists("fail2ban")) {
+	&foreign_require("fail2ban");
+	if (&fail2ban::is_fail2ban_running()) {
+		my $err = &fail2ban::restart_fail2ban_server(1);
+		&error(&text('index_dependent', 'fail2ban'))
+			if ($err);
+		}
+	}
 }
 
 # list_system_interfaces()
@@ -316,6 +370,146 @@ else {
 	# No port chosen
 	return undef;
 	}
+}
+
+# get_default_zone
+# Returns default zone
+sub get_default_zone
+{
+my @zones = &list_firewalld_zones();
+my ($zone) = grep { $_->{'default'} } @zones;
+return $zone;
+}
+
+# add_ip_ban(ip, [zone])
+# Ban given IP address in given or default zone
+sub add_ip_ban
+{
+my ($ip, $zone) = @_;
+return create_rich_rule('add', $ip, $zone);
+}
+
+# remove_ip_ban(ip, [zone])
+# Un-ban given IP address in given or default zone 
+sub remove_ip_ban
+{
+my ($ip, $zone) = @_;
+return create_rich_rule('remove', $ip, $zone);
+}
+
+# create_rich_rule(action, ip, [\zone], [opts])
+# Add or remove rich rule for given IP in given or default zone 
+sub create_rich_rule
+{
+my ($action, $ip, $zone, $opts) = @_;
+my $ip_validate = sub {
+	return &check_ipaddress($_[0]) || &check_ip6address($_[0]);
+	};
+
+# Default action for permanent ban is 'drop'
+my $action_type = "drop";
+
+# Override defaults
+if (ref($opts)) {
+	
+	# Override default action
+	$action_type = lc($opts->{'action'})
+		if ($opts->{'action'} &&
+		    $opts->{'action'} =~ /^accept|reject|drop|mark$/);
+}
+
+# Zone name
+if (!$zone) {
+	($zone) = get_default_zone();
+	}
+$zone = $zone->{'name'};
+
+# Validate action
+$action eq 'add' || $action eq 'remove' || &error($text{'list_rule_actionerr'});
+
+# Validate IP
+&$ip_validate($ip) || &error($text{'list_rule_iperr'});
+
+# Set family
+my $family = $ip =~ /:/ ? 'ipv6' : 'ipv4';
+
+# Add/remove rich rule
+my $get_cmd = sub {
+	my ($rtype) = @_;
+	my $type;
+	$type = " --permanent" if ($rtype eq 'permanent');
+	return "$config{'firewall_cmd'} --zone=".quotemeta($zone)."$type --".quotemeta($action)."-rich-rule=\"rule family=".quotemeta($family)." source address=".quotemeta($ip)." ".quotemeta($action_type)."\"";
+	};
+my $out = &backquote_logged(&$get_cmd()." 2>&1 </dev/null");
+return $out if ($?);
+$out = &backquote_logged(&$get_cmd('permanent')." 2>&1 </dev/null");
+return $? ? $out : undef;
+}
+
+# remove_rich_rule(rule, [\zone])
+# Remove rich rule in given or default zone 
+sub remove_rich_rule
+{
+my ($rule, $zone) = @_;
+
+# Zone name
+if (!$zone) {
+	($zone) = get_default_zone();
+	}
+$zone = $zone->{'name'};
+
+# Remove rule command
+my $get_cmd = sub {
+	my ($rtype) = @_;
+	my $type;
+	$type = " --permanent" if ($rtype eq 'permanent');
+	return "$config{'firewall_cmd'} --zone=".quotemeta($zone)."$type --remove-rich-rule ".quotemeta(&trim($rule))."";
+	};
+
+my $out = &backquote_logged(&$get_cmd()." 2>&1 </dev/null");
+return $out if ($?);
+$out = &backquote_logged(&$get_cmd('permanent')." 2>&1 </dev/null");
+return $? ? $out : undef;
+}
+
+# remove_direct_rule(rule)
+# Remove given direct rule
+sub remove_direct_rule
+{
+my ($rule) = @_;
+
+# Sanitize rule manually (couldn't make it work with quotemeta)
+$rule =~ tr/A-Za-z0-9\-\_\=\"\:\.\,\/ //cd;
+
+# Remove rule command
+my $get_cmd = sub {
+	my ($rtype) = @_;
+	my $type;
+	$type = " --permanent" if ($rtype eq 'permanent');
+	return "$config{'firewall_cmd'}${type} --direct --remove-rule ".&trim($rule)."";
+	};
+
+my $out = &backquote_logged(&$get_cmd()." 2>&1 </dev/null");
+return $out if ($?);
+$out = &backquote_logged(&$get_cmd('permanent')." 2>&1 </dev/null");
+return $? ? $out : undef;
+}
+
+sub get_config_files
+{
+my $conf_dir = $config{'config_dir'} || '/etc/firewalld';
+my @conf_files;
+my @dirpath = ($conf_dir);
+eval "use File::Find;";
+if (!$@) {
+	find(sub {
+		my $file = $File::Find::name;
+		push(@conf_files, $file)
+			if (-f $file && $file =~ /\.(conf|xml)$/);
+		}, @dirpath);
+	}
+push(@conf_files, "$conf_dir/direct.xml");
+return @conf_files;
 }
 
 1;

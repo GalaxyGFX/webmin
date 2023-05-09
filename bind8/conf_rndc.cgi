@@ -3,6 +3,8 @@
 # XXX should check if already working!
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 # Globals
 our (%access, %text, %config);
 our $module_name;
@@ -33,7 +35,7 @@ if (!$? && $out !~ /failed/) {
 print &ui_form_start("save_rndc.cgi", "post");
 my $ex = -s $config{'rndc_conf'};
 print &text($ex ? 'rndc_rusure' : 'rndc_rusure2',
-	    "<tt>$config{'rndc_conf'}</tt>"),"<p>\n";
+	    "<tt>$config{'rndc_conf'}</tt>"),"<br>\n";
 print &ui_submit($text{'rndc_ok'});
 print &ui_form_end();
 

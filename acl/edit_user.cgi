@@ -4,8 +4,10 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './acl-lib.pl';
-our (%in, %text, %config, %access, $config_directory, $base_remote_user);
+our (%in, %text, %config, %gconfig, %access, $config_directory, $base_remote_user, $remote_user);
 &foreign_require("webmin", "webmin-lib.pl");
 
 &ReadParse();
@@ -200,6 +202,22 @@ if ($access{'lang'}) {
 			    [ map { [ $_->{'lang'}, $_->{'desc'}."" ] }
 				  &list_languages() ]) ]
 		  ]));
+	}
+
+if ($access{'locale'}) {
+	# Current locale
+	eval "use DateTime; use DateTime::Locale; use DateTime::TimeZone;";
+	if (!$@) {
+		my $locales = &list_locales();
+		my %localesrev = reverse %{$locales};
+		my $locale_auto = &parse_accepted_language();
+		print &ui_table_row($text{'edit_locale'},
+			&ui_radio("locale_def", $user{'locale'} ? 0 : 1,
+			  [ [ 1, $text{'default'} ],
+			    [ 0, &ui_select("locale", $user{'locale'} || $gconfig{'locale'} || &get_default_system_locale(),
+					   [ map { [ $localesrev{$_}, $_ ] } sort values %{$locales} ]) ] ]), 
+			undef, [ "valign=middle","valign=middle" ]);
+		}
 	}
 
 if ($access{'cats'}) {
@@ -434,7 +452,7 @@ if ($in{'user'}) {
 	if (&foreign_available("webminlog")) {
 		push(@buts, [ "but_log", $text{'edit_log'} ]);
 		}
-	if ($access{'switch'} && $main::session_id) {
+	if ($access{'switch'} && $main::session_id && $in{'user'} ne $remote_user) {
 		push(@buts, [ "but_switch", $text{'edit_switch'} ]);
 		}
 	if ($access{'delete'}) {

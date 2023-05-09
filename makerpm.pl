@@ -60,12 +60,23 @@ $maketemp =~ s/\\/\\\\/g;
 $maketemp =~ s/`/\\`/g;
 $maketemp =~ s/\$/\\\$/g;
 
-system("cp tarballs/webmin-$ver.tar.gz $source_dir");
+if ($rel && $rel > 1) {
+	$makerel = "echo $rel >%{buildroot}/usr/libexec/webmin/release";
+	}
+else {
+	$makerel = "rm -f %{buildroot}/usr/libexec/webmin/release";
+	}
+
+if ($rel > 1 && -r "tarballs/webmin-$ver-$rel.tar.gz") {
+	$tarfile = "webmin-$ver-$rel.tar.gz";
+	}
+else {
+	$tarfile = "webmin-$ver.tar.gz";
+	}
+system("cp tarballs/$tarfile $source_dir");
 open(SPEC, ">$spec_dir/webmin-$ver.spec");
 print SPEC <<EOF;
 %global __perl_provides %{nil}
-
-#%define BuildRoot /tmp/%{name}-%{version}
 %define __spec_install_post %{nil}
 
 Summary: A web-based administration interface for Unix systems.
@@ -73,11 +84,13 @@ Name: webmin
 Version: $ver
 Release: $rel
 Provides: %{name}-%{version} perl(WebminCore)
-Requires: /bin/sh /usr/bin/perl /bin/rm perl(Net::SSLeay) perl(Time::Local) perl(Encode::Detect) perl(Data::Dumper) openssl unzip tar
+Requires(pre): /usr/bin/perl
+Requires: /bin/sh /usr/bin/perl /bin/rm perl(lib) perl(open) perl(Net::SSLeay) perl(Time::Local) perl(Encode::Detect) perl(Data::Dumper) perl(File::Path) perl(File::Basename) perl(Digest::SHA) perl(Digest::MD5) openssl unzip tar
+Recommends: perl(DateTime) perl(DateTime::TimeZone) perl(DateTime::Locale) perl(Time::Piece)
 AutoReq: 0
-License: Freeware
+License: BSD-3-clause
 Group: System/Tools
-Source: http://www.webmin.com/download/%{name}-%{version}.tar.gz
+Source: http://www.webmin.com/download/$tarfile
 Vendor: Jamie Cameron
 BuildRoot: /tmp/%{name}-%{version}
 BuildArchitectures: noarch
@@ -104,25 +117,15 @@ chmod -R og-w .
 
 %install
 mkdir -p %{buildroot}/usr/libexec/webmin
-mkdir -p %{buildroot}/etc/sysconfig/daemons
-mkdir -p %{buildroot}/etc/rc.d/{rc0.d,rc1.d,rc2.d,rc3.d,rc5.d,rc6.d}
-mkdir -p %{buildroot}/etc/init.d
 mkdir -p %{buildroot}/etc/pam.d
 mkdir -p %{buildroot}/usr/bin
 cp -rp * %{buildroot}/usr/libexec/webmin
+cp webmin-pam %{buildroot}/etc/pam.d/webmin
+ln -s /usr/libexec/webmin/bin/webmin %{buildroot}/usr/bin
 rm %{buildroot}/usr/libexec/webmin/blue-theme
 cp -rp %{buildroot}/usr/libexec/webmin/gray-theme %{buildroot}/usr/libexec/webmin/blue-theme
-cp webmin-daemon %{buildroot}/etc/sysconfig/daemons/webmin
-cp webmin-init %{buildroot}/etc/init.d/webmin
-cp webmin-pam %{buildroot}/etc/pam.d/webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc2.d/S99webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc3.d/S99webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc5.d/S99webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc0.d/K10webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc1.d/K10webmin
-ln -s /etc/init.d/webmin %{buildroot}/etc/rc.d/rc6.d/K10webmin
-ln -s /usr/libexec/webmin/bin/webmin %{buildroot}/usr/bin
 echo rpm >%{buildroot}/usr/libexec/webmin/install-type
+$makerel
 
 %clean
 #%{rmDESTDIR}
@@ -132,14 +135,6 @@ echo rpm >%{buildroot}/usr/libexec/webmin/install-type
 %defattr(-,root,root)
 /usr/libexec/webmin
 /usr/bin/webmin
-%config /etc/sysconfig/daemons/webmin
-/etc/init.d/webmin
-/etc/rc.d/rc2.d/S99webmin
-/etc/rc.d/rc3.d/S99webmin
-/etc/rc.d/rc5.d/S99webmin
-/etc/rc.d/rc0.d/K10webmin
-/etc/rc.d/rc1.d/K10webmin
-/etc/rc.d/rc6.d/K10webmin
 %config /etc/pam.d/webmin
 
 %pre
@@ -163,7 +158,6 @@ if [ ! -r /etc/webmin/config ]; then
 		echo Unable to identify operating system
 		exit 2
 	fi
-	echo Operating system is \$oscheck
 	if [ "\$WEBMIN_PORT\" != \"\" ]; then
 		port=\$WEBMIN_PORT
 	else
@@ -189,45 +183,22 @@ fi
 
 %post
 inetd=`grep "^inetd=" /etc/webmin/miniserv.conf 2>/dev/null | sed -e 's/inetd=//g'`
-startafter=0
-
-# Fix old versions of Webmin that might kill the UI process on upgrade
-if [ -d /etc/webmin ]; then
-	cat >/etc/webmin/stop 2>/dev/null <<'EOD'
-#!/bin/sh
-echo Stopping Webmin server in /usr/libexec/webmin
-pidfile=`grep "^pidfile=" /etc/webmin/miniserv.conf | sed -e 's/pidfile=//g'`
-pid=`cat \$pidfile`
-if [ "\$pid" != "" ]; then
-  kill \$pid || exit 1
-  if [ "\$1" = "--kill" ]; then
-    sleep 1
-    (kill -9 -- -\$pid || kill -9 \$pid) 2>/dev/null
-  fi
-  exit 0
-else
-  exit 1
-fi
-EOD
-fi
-
+killmodenone=0
 if [ "\$1" != 1 ]; then
-	# Upgrading the RPM, so stop the old webmin properly
+	# Upgrading the RPM, so stop the old Webmin properly
 	if [ "\$inetd" != "1" ]; then
-		kill -0 `cat /var/webmin/miniserv.pid 2>/dev/null` 2>/dev/null
-		if [ "\$?" = 0 ]; then
-		  startafter=1
+		if [ -f /etc/webmin/.pre-install ]; then
+			/etc/webmin/.pre-install >/dev/null 2>&1 </dev/null
+		else
+			killmodenone=1
 		fi
-		/etc/init.d/webmin stop >/dev/null 2>&1 </dev/null
 	fi
-else
-  startafter=1
 fi
 cd /usr/libexec/webmin
 config_dir=/etc/webmin
 var_dir=/var/webmin
 perl=/usr/bin/perl
-autoos=3
+autoos=1
 if [ "\$WEBMIN_PORT\" != \"\" ]; then
 	port=\$WEBMIN_PORT
 else
@@ -243,31 +214,52 @@ fi
 host=`hostname`
 ssl=1
 atboot=1
+makeboot=1
 nochown=1
 autothird=1
 noperlpath=1
 nouninstall=1
 nostart=1
+nostop=1
 if [ "\$tempdir" = "" ]; then
 	tempdir=/tmp/.webmin
 fi
-export config_dir var_dir perl autoos port login crypt host ssl nochown autothird noperlpath nouninstall nostart allow atboot
+export config_dir var_dir perl autoos port login crypt host ssl nochown autothird noperlpath nouninstall nostart allow atboot makeboot nostop
 ./setup.sh >\$tempdir/webmin-setup.out 2>&1
 chmod 600 \$tempdir/webmin-setup.out
 rm -f /var/lock/subsys/webmin
-if [ "\$inetd" != "1" -a "\$startafter" = "1" ]; then
-	/etc/init.d/webmin stop >/dev/null 2>&1 </dev/null
-	/etc/init.d/webmin start >/dev/null 2>&1 </dev/null
+cd /usr/libexec/webmin
+if [ "\$inetd" != "1" ]; then
+	if [ "\$1" == 1 ]; then
+		/etc/webmin/start >/dev/null 2>&1 </dev/null
+		if [ "\$?" != "0" ]; then
+			echo "error: Webmin server cannot be started. It is advised to start it manually by\n       running \\"/etc/webmin/restart-by-force-kill\\" command"
+		fi
+	else
+		if [ "\$killmodenone" != "1" ]; then
+			/etc/webmin/.post-install >/dev/null 2>&1 </dev/null
+		else
+			/etc/webmin/.reload-init >/dev/null 2>&1 </dev/null
+			if [ -f /etc/webmin/.reload-init-systemd ]; then
+				/etc/webmin/.reload-init-systemd >/dev/null 2>&1 </dev/null
+				rm -f /etc/webmin/.reload-init-systemd
+			fi
+		fi
+		if [ "\$?" != "0" ]; then
+			echo "warning: Webmin server cannot be restarted. It is advised to restart it manually by\n         running \\"/etc/webmin/restart-by-force-kill\\" when upgrade process is finished"
+		fi
+	fi
 fi
+
 cat >/etc/webmin/uninstall.sh <<EOFF
 #!/bin/sh
 printf "Are you sure you want to uninstall Webmin? (y/n) : "
 read answer
 printf "\\n"
 if [ "\\\$answer" = "y" ]; then
-	echo "Removing webmin RPM .."
+	echo "Removing Webmin RPM package.."
 	rpm -e --nodeps webmin
-	echo "Done!"
+	echo ".. done"
 fi
 EOFF
 chmod +x /etc/webmin/uninstall.sh
@@ -286,11 +278,11 @@ if [ "$musthost" != "" ]; then
 fi
 if [ "\$1" == 1 ]; then
 	if [ "\$sslmode" = "1" ]; then
-		echo "Webmin install complete. You can now login to https://\$host:\$port/"
+		echo "Webmin install complete. You can now login to https://\$host:\$port/" >>\$tempdir/webmin-setup.out 2>&1
 	else
-		echo "Webmin install complete. You can now login to http://\$host:\$port/"
+		echo "Webmin install complete. You can now login to http://\$host:\$port/" >>\$tempdir/webmin-setup.out 2>&1
 	fi
-	echo "as root with your root password."
+	echo "as root with your root password." >>\$tempdir/webmin-setup.out 2>&1
 fi
 /bin/true
 
@@ -300,10 +292,8 @@ if [ "\$1" = 0 ]; then
 	if [ "\$?" = 0 ]; then
 		# RPM is being removed, and no new version of webmin
 		# has taken it's place. Run uninstalls and stop the server
-		echo "Running uninstall scripts .."
-		(cd /usr/libexec/webmin ; WEBMIN_CONFIG=/etc/webmin WEBMIN_VAR=/var/webmin LANG= /usr/libexec/webmin/run-uninstalls.pl)
-		/etc/init.d/webmin stop >/dev/null 2>&1 </dev/null
 		/etc/webmin/stop >/dev/null 2>&1 </dev/null
+		(cd /usr/libexec/webmin ; WEBMIN_CONFIG=/etc/webmin WEBMIN_VAR=/var/webmin LANG= /usr/libexec/webmin/run-uninstalls.pl) >/dev/null 2>&1 </dev/null
 	fi
 fi
 /bin/true
@@ -323,16 +313,15 @@ fi
 
 %triggerpostun -- webmin
 if [ ! -d /var/webmin -a "\$1" = 2 ]; then
-	echo Re-creating /var/webmin directory
 	mkdir /var/webmin
 fi
 if [ ! -r /etc/webmin/miniserv.conf -a -d /etc/.webmin-backup -a "\$1" = 2 ]; then
-	echo Recovering /etc/webmin directory
 	rm -rf /etc/.webmin-broken
 	mv /etc/webmin /etc/.webmin-broken
 	mv /etc/.webmin-backup /etc/webmin
-	/etc/init.d/webmin stop >/dev/null 2>&1 </dev/null
-	/etc/init.d/webmin start >/dev/null 2>&1 </dev/null
+	if [ -r /etc/webmin/.post-install ]; then
+		/etc/webmin/.post-install >/dev/null 2>&1 </dev/null
+	fi
 else
 	rm -rf /etc/.webmin-backup
 fi

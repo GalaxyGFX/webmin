@@ -1,4 +1,4 @@
-soa_style=0
+soa_style=1
 named_path=/usr/sbin/named
 named_conf=/etc/bind/named.conf
 named_group=/usr/sbin/named
@@ -6,7 +6,7 @@ named_usr=/usr/sbin/named
 zones_file=/etc/bind/named.conf
 pid_file=/var/run/named.pid
 start_cmd=service bind start
-show_list=0
+show_list=1
 records_order=0
 max_zones=50
 rev_def=0

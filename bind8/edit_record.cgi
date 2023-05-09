@@ -3,6 +3,8 @@
 # Edit an existing record of some type
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%access, %text, %in); 
 
 require './bind8-lib.pl';
@@ -28,6 +30,6 @@ my $desc = &text('edit_header', &zone_subhead($zone));
 &ui_print_footer("", $text{'index_return'},
 	"edit_$type.cgi?zone=$in{'zone'}&view=$in{'view'}",
 	$text{'recs_return'},
-	"edit_recs.cgi?zone=$in{'zone'}&type=$in{'type'}",
+	"edit_recs.cgi?zone=$in{'zone'}&view=$in{'view'}&type=$in{'type'}",
 	$text{'edit_return'});
 

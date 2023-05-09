@@ -14,6 +14,8 @@ Library for editing webmin users, passwords and access rights.
 BEGIN { push(@INC, ".."); };
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 use WebminCore;
 &init_config();
 do 'md5-lib.pl';
@@ -86,6 +88,8 @@ while(my $l = <$fh>) {
 		$user{'modules'} = $acl{$user[0]};
 		$user{'lang'} = $gconfig{"lang_$user[0]"};
 		$user{'langauto'} = $gconfig{"langauto_$user[0]"};
+		$user{'locale'} = $gconfig{"locale_$user[0]"};
+		$user{'dateformat'} = $gconfig{"dateformat_$user[0]"};
 		$user{'notabs'} = $gconfig{"notabs_$user[0]"};
 		$user{'rbacdeny'} = $gconfig{"rbacdeny_$user[0]"};
 		if ($gconfig{"theme_$user[0]"}) {
@@ -651,7 +655,7 @@ else {
 	my $deny = $user->{'deny'};
 	$deny =~ s/:/;/g if ($deny);
 	foreach my $l (@pwfile) {
-		if ($l =~ /^([^:]+):([^:]*)/ && $1 eq $username) {
+		if ($l =~ /^([^:]+):([^:\r\n]*)/ && $1 eq $username) {
 			&add_old_password($user, "$2", \%miniserv);
 			&print_tempfile($fh,
 				$user->{'name'},":",
@@ -700,6 +704,10 @@ else {
 	$gconfig{"lang_".$user->{'name'}} = $user->{'lang'} if ($user->{'lang'});
 	delete($gconfig{"langauto_".$username});
 	$gconfig{"langauto_".$user->{'name'}} = $user->{'langauto'} if (defined($user->{'langauto'}));
+	delete($gconfig{"locale_".$username});
+	$gconfig{"locale_".$user->{'name'}} = $user->{'locale'} if (defined($user->{'locale'}));
+	delete($gconfig{"dateformat_".$username});
+	$gconfig{"dateformat_".$user->{'name'}} = $user->{'dateformat'} if (defined($user->{'dateformat'}));
 	delete($gconfig{"notabs_".$username});
 	$gconfig{"notabs_".$user->{'name'}} = $user->{'notabs'}
 		if ($user->{'notabs'});
@@ -766,14 +774,16 @@ if ($oldpass ne $user->{'pass'} &&
 	my $nolock = $oldpass;
 	$nolock =~ s/^\!//;
 	$user->{'olds'} ||= [];
-	unshift(@{$user->{'olds'}}, $nolock);
-	if ($miniserv->{'pass_oldblock'}) {
-		while(scalar(@{$user->{'olds'}}) >
-		      $miniserv->{'pass_oldblock'}) {
-			pop(@{$user->{'olds'}});
+	if (&indexof($nolock, @{$user->{'olds'}}) < 0) {
+		unshift(@{$user->{'olds'}}, $nolock);
+		if ($miniserv->{'pass_oldblock'}) {
+			while(scalar(@{$user->{'olds'}}) >
+			      $miniserv->{'pass_oldblock'}) {
+				pop(@{$user->{'olds'}});
+				}
 			}
+		$user->{'lastchange'} = time();
 		}
-	$user->{'lastchange'} = time();
 	}
 }
 
@@ -1690,10 +1700,17 @@ elsif ($mode == 2) {
 	return &encrypt_sha512($pass, $salt);
 	}
 else {
-	# Use Unix DES
-	&seed_random();
-	$salt ||= chr(int(rand(26))+65).chr(int(rand(26))+65);
-	return &unix_crypt($pass, $salt);
+	# Try detecting system default first
+	if (&foreign_available('useradmin')) {
+		&foreign_require('useradmin');
+		return &useradmin::encrypt_password($pass, $salt, 1);
+		}
+	else {
+		# Use Unix DES
+		&seed_random();
+		$salt ||= chr(int(rand(26))+65).chr(int(rand(26))+65);
+		return &unix_crypt($pass, $salt);
+		}
 	}
 }
 
@@ -1950,16 +1967,8 @@ my $miniserv = { };
 my @anon = split(/\s+/, $miniserv->{'anonymous'} || "");
 my ($user, $found) = &get_anonymous_access($path, $miniserv);
 return 1 if ($found >= 0);		# Already setup
-
-# Grant access to the user and path
-&lock_file(&get_miniserv_config_file());
-$user ||= '';
-push(@anon, "$path=$user");
-$miniserv->{'anonymous'} = join(" ", @anon);
-&put_miniserv_config($miniserv);
-&unlock_file(&get_miniserv_config_file());
-
-if (!$user) {
+my $auser = grep { $_->{'name'} eq $user } &list_users();
+if (!$auser) {
 	# Create a user if need be
 	$user = "anonymous";
 	my $uinfo = { 'name' => $user,
@@ -1971,15 +1980,22 @@ if (!$user) {
 else {
 	# Make sure the user has the module
 	my ($uinfo) = grep { $_->{'name'} eq $user } &list_users();
-	$uinfo->{'modules'} ||= [];
 	if ($uinfo && &indexof($mod, @{$uinfo->{'modules'}}) < 0) {
+		$uinfo->{'modules'} ||= [];
 		push(@{$uinfo->{'modules'}}, $mod);
 		&modify_user($uinfo->{'name'}, $uinfo);
 		}
 	else {
-		print STDERR "Anonymous access is granted to user $user, but he doesn't exist!\n";
+		print STDERR "Anonymous access attempted to be granted to user $user, but it doesn't exist!\n";
 		}
 	}
+
+# Grant access to the user and path
+&lock_file(&get_miniserv_config_file());
+push(@anon, "$path=$user");
+$miniserv->{'anonymous'} = join(" ", @anon);
+&put_miniserv_config($miniserv);
+&unlock_file(&get_miniserv_config_file());
 
 &reload_miniserv();
 }

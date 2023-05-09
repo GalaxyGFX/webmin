@@ -37,7 +37,9 @@ sub dump_form
 print &ui_table_row(&hlink($text{'dump_dest'}, "dest"),
    &ui_radio("mode", $_[0]->{'host'} ? 1 : 0,
 	[ [ 0, $text{'dump_file'}." ".
-	       &ui_textbox("file", $_[0]->{'file'}, 50).
+	       &ui_textbox("file", $_[0]->{'file'}, 50, undef, undef,
+	    $config{'date_subs'} ?
+	        'placeholder="/backups/filename-%y-%m-%d-%H-%M-%S.tar.gz"' : undef).
 	       " ".&file_chooser_button("file")."<br>" ],
 	  [ 1, &text('dump_host',
 		     &ui_textbox("host", $_[0]->{'host'}, 20),
@@ -553,7 +555,7 @@ if ($_[0] eq 'tar') {
 		      3, $tds);
 
 	# Password option for SSH
-	print &ui_table_row(&hlink($text{'dump_pass2'},"passs"),
+	print &ui_table_row(&hlink($text{'dump_pass2'},"pass2"),
 		      &ui_password("pass", $_[1]->{'pass'}, 20),
 		      3, $tds);
 
@@ -622,7 +624,7 @@ else {
 		      3, $tds);
 
 	# Password option for SSH
-	print &ui_table_row(&hlink($text{'dump_pass2'},"passs"),
+	print &ui_table_row(&hlink($text{'dump_pass2'},"pass2"),
 		      &ui_password("pass", $_[1]->{'pass'}, 20),
 		      3, $tds);
 

@@ -2,6 +2,8 @@
 # Show a list of free IP addresses, within the configured ranges
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our (%config, %text);
 
 require './bind8-lib.pl';
@@ -21,7 +23,7 @@ my %taken;
 my %nets;
 foreach my $z (@zones) {
 	my $type = &find_value("type", $z->{'members'});
-	next if ($type ne "master");
+	next if ($type ne "master" && $type ne "primary");
 	my $file = &find_value("file", $z->{'members'});
 	my @recs = &read_zone_file($file, $z->{'value'});
 	foreach my $r (@recs) {

@@ -56,22 +56,20 @@ else {
 
 # Allow logins by root
 $root = &find_value("PermitRootLogin", $conf);
-if (!$root) {
-	# Default ways seems to be 'yes'
-	$root = "yes";
-	}
-@opts = ( [ 'yes', $text{'yes'} ],
+$rldef = $version{'number'} >= 7 ? $text{'users_nopwd'} : $text{'yes'};
+@opts = ( [ '', $text{'default'}.' ('.$rldef.')' ],
+          [ 'yes', $text{'yes'} ],
 	  [ 'no', $text{'no'} ] );
 if ($version{'type'} eq 'ssh') {
 	push(@opts, [ 'nopwd', $text{'users_nopwd'} ]);
 	}
 else {
-	push(@opts, [ 'without-password', $text{'users_nopwd'} ]);
+	push(@opts, [ 'prohibit-password', $text{'users_nopwd'} ]);
 	if ($version{'number'} >= 2) {
 		push(@opts, [ 'forced-commands-only', $text{'users_fcmd'} ]);
 		}
 	}
-print "</select></td>\n";
+$root = "prohibit-password" if ($root eq "without-password");
 print &ui_table_row($text{'users_root'},
 	&ui_select("root", lc($root), \@opts));
 
@@ -86,7 +84,7 @@ if (($version{'type'} eq 'ssh' && $version{'number'} < 3) ||
 # SSH 2 DSA authentication
 if ($version{'type'} eq 'openssh' && $version{'number'} >= 3) {
 	$dsa = &find_value("PubkeyAuthentication", $conf);
-	print &ui_table_row($text{'users_dsa'},
+	print &ui_table_row($text{'users_pkeyauth'},
 		&ui_yesno_radio('dsa', lc($dsa) ne 'no'));
 	}
 

@@ -2,9 +2,6 @@ index_refresh=모듈 새로 고침
 index_refreshmsg=설치된 서버의 모든 Webmin 모듈을 다시 확인하고 '사용하지 않은 모듈'범주에 나타나는 모듈을 업데이트하십시오.
 
 access_local=로컬 네트워크를 목록에 포함
-access_elibwrap=$1 Perl 모듈이 설치되어 있지 않으므로 TCP 래퍼를 사용한 IP 액세스 제어를 사용할 수 없습니다.
-access_libwrapcpan=Webmin이 누락 된 Perl 모듈을 자동으로 설치하게하려면 <a href='$1'>여기를 클릭</a>하십시오.
-
 access_eip6='$1'은 완전한 IPv6 또는 네트워크 주소가 아닙니다
 access_ecidr6='$1'은 (는) 유효한 IPv6 네트워크 크기가 아닙니다
 access_ecidr8=IPv6 네트워크 크기 '$1'은 (는) 8로 나눌 수 있어야합니다
@@ -22,6 +19,10 @@ bind_maxconns_per_net=네트워크 당 최대 동시 연결
 bind_emaxconns=최대 동시 연결 수는 1보다 커야합니다.
 bind_emaxconns_per_ip=IP 당 최대 동시 연결 수는 1보다 커야합니다.
 bind_emaxconns_per_net=네트워크 당 최대 동시 연결 수는 1보다 커야합니다.
+bind_maxlifetime=최대 Webmin 프로세스 수명
+bind_maxlifetime_def=제한 없는
+bind_maxlifetime_secs=초
+bind_emaxlifetime=최대 프로세스 수명은 60초보다 큰 숫자여야 합니다
 
 log_global=&lt;글로벌 액션&gt;
 log_sched=예약 된 기능을 기록 하시겠습니까?
@@ -38,11 +39,20 @@ mods_checksig=다운로드 한 모듈의 서명 파일을 확인 하시겠습니
 
 os_perllib=추가 Perl 라이브러리 경로
 os_incorrect=운영 체제 $1이(가) 버전 $2(으)로 업그레이드되었습니다
+os_release_notes=릴리즈 노트
 os_usermin=Usermin OS도 업데이트
+
+lang_title=언어 및 로케일
+lang_title2=Webmin 언어 및 로케일
+lang_lang=언어
+lang_locale=장소
+lang_dateformat=날짜 표시 형식
+lang_dateformat_dd/mon/yyyy=dd/mon/yyyy(예: 2001년 9월 16일)
 
 ssl_deny=거부 할 SSL 프로토콜 버전
 ssl_compression=압축 SSL 연결을 허용 하시겠습니까?
 ssl_honorcipherorder=서버 정의 암호 순서를 강제로 사용 하시겠습니까?
+ssl_hsts=HSTS 헤더로 SSL 시행
 ssl_extracasdef=글로벌 SSL 설정과 동일
 ssl_extracasnone=이 IP 주소에 대해서는 없음
 ssl_extracasbelow=아래에 입력 ..
@@ -70,6 +80,7 @@ ssl_already2=이전에 생성 된 인증서 서명 요청  :
 ssl_letsdesc=Let 's Encrypt는 Webmin에서 사용할 SSL 인증서를 생성하는 데 사용할 수있는 무료의 자동화 된 공개 인증 기관입니다.
 ssl_letserr=불행히도, Let 's Encrypt는 시스템에서 사용할 수 없습니다 : $1.
 ssl_letserr2=또는 <a href='$1'>모듈 구성</a> 페이지에서 <tt>letsencrypt</tt> 명령의 올바른 경로를 사용하고 있는지 확인하십시오.
+
 ssl_letsdesc2=이 페이지는 새 인증서를 요청하는 데 사용될 수 있으며 현재 Webmin에 구성된 다른 인증서를 덮어 씁니다. 그러나 Let 's Encrypt 서비스에서는이 시스템이 도메인의 웹 사이트를 호스트하는지 확인하여 인증서 도메인의 소유권을 확인해야합니다. 웹 사이트의 문서 디렉토리에 작은 임시 파일을 배치하면됩니다.
 ssl_letsheader=새 SSL 인증서 옵션
 ssl_letsdoms=인증서의 호스트 이름
@@ -98,6 +109,10 @@ newcsr_ok2=이 CSR은 서명 기관으로 보내야하며, 서명 기관은 서�
 startpage_webminup=시스템 정보 페이지에 Webmin 업데이트를 표시 하시겠습니까?
 startpage_moduleup=시스템 정보 페이지에 모듈 업데이트를 표시 하시겠습니까?
 
+upgrade_setup=<tt>setup.sh</tt> 스크립트를 실행하여 Webmin을 업그레이드하는 중 ..
+upgrade_setuprpm=<tt>RPM</tt>을 실행하여 Webmin 업그레이드 ..
+upgrade_setupdeb=<tt>DPKG</tt>를 실행하여 Webmin 업그레이드 ..
+upgrade_setuppackage=<tt>pkgadd</tt>를 실행하여 Webmin 업그레이드 ..
 upgrade_eportage=포티지 패키지에서 설치하면 Webmin의 업그레이드 기능이 현재 작동하지 않습니다. 대신 포티지 도구를 사용하여 업그레이드하십시오.
 upgrade_src=에서 Webmin 업그레이드
 upgrade_opts=업그레이드 옵션
@@ -130,8 +145,13 @@ session_cmddef0=다음 명령으로 비밀번호를 변경하십시오.
 session_ecmd=비밀번호 변경 명령이 없거나 잘못되었습니다
 session_banner=사전 로그인 배너
 session_md5=Webmin 비밀번호 해싱 형식
-session_sha512=SHA512 암호화 사용
-session_esha512mod=Perl $1 모듈이 설치되지 않았으므로 SHA512 암호화를 사용할 수 없습니다.
+session_md5off=자동으로 결정
+session_md5on=<tt>MD5</tt> 해싱 형식 사용
+session_sha512=<tt>SHA512</tt> 해싱 형식 사용
+session_yescrypt=<tt>yescrypt</tt> 해싱 형식 사용
+session_emd5mod=Perl $1 모듈이 설치되어 있지 않으므로 MD5 해싱 형식을 사용할 수 없습니다
+session_esha512mod=Perl $1 모듈이 설치되어 있지 않으므로 SHA512 해싱 형식을 사용할 수 없습니다
+session_eyescrypt=Perl $1 모듈이 설치되어 있지 않으므로 yescrypt 해싱 형식을 사용할 수 없습니다
 session_passapi=원격 비밀번호 변경 API를 사용하시겠습니까?
 session_passapi0=API 사용 중지됨
 session_passapi1=Unix 사용자를 위해 활성화된 API
@@ -181,6 +201,7 @@ advanced_precache0=없음
 advanced_precache1=영어 텍스트 파일
 advanced_precache2=쉘 패턴과 일치하는 파일 $1
 advanced_eprecache=사전 캐시 할 셸 패턴 목록이 없습니다.
+advanced_etempallowed=임시파일디렉토리 $1 은시스템디렉토리입니다
 advanced_chattr=불변 파일의 수정을 허용합니까?
 advanced_sclass=예정된 작업을위한 IO 클래스
 advanced_sprio=스케줄 된 작업의 IO 우선 순위
@@ -319,6 +340,16 @@ web_expirespaths=URL 경로에 따른 클라이언트 측 캐시 시간
 web_expirespath=경로 정규식
 web_expirestime=캐시 시간 (초)
 web_eexpires2=$1 행에 없거나 숫자가 아닌 클라이언트 측 캐시 시간
+web_rediruurl=로그인 후 전환 리디렉션 URL
+web_redirdesc=내부 리디렉션 URL 재정의
+web_eredirurl='$1'에 공백이 포함되어 있으며 유효한 URL이 아닙니다
+web_redirhost=호스트 리디렉션
+web_eredirhost='$1'은(는) 유효한 호스트 이름이 아닙니다
+web_redirport=리디렉션 포트
+web_redirpref=리디렉션 접두사
+web_eredirpref=접두사는 슬래시로 시작해야 합니다
+web_eredirpref2=접두사는 공백을 포함할 수 없습니다
+web_redirssl=SSL 리디렉션
 
 webmincron_title=Webmin 예약 기능
 webmincron_emodule=Webmin Cron Jobs 모듈이 설치되지 않았습니다!

@@ -1,5 +1,7 @@
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 
 do 'bind8-lib.pl';
 # Globals from bind8-lib.pl
@@ -25,7 +27,7 @@ foreach my $v (@views) {
 push(@zones, &find("zone", $conf));
 foreach my $z (@zones) {
 	my $tv = &find_value("type", $z->{'members'});
-	next if ($tv ne "master" && $tv ne "hint");
+	next if ($tv ne "master" && $tv ne "primary" && $tv ne "hint");
 	my $file = &find_value("file", $z->{'members'});
 	next if (!$file);
 	if (&is_raw_format_records(&make_chroot($file))) {

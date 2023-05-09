@@ -57,26 +57,35 @@ sub put_usermin_miniserv_config
 &write_file($usermin_miniserv_config, \%usermin_miniserv_config_cache);
 }
 
-=head2 get_usermin_version
+=head2 get_usermin_version([format_dev_version], [include_release])
 
 Returns the version number of Usermin on this system.
 
 =cut
 sub get_usermin_version
 {
-my ($ui_format_dev) = @_;
+my ($ui_format_dev, $inc_release_version) = @_;
 local %miniserv;
 &get_usermin_miniserv_config(\%miniserv);
 open(VERSION, "<$miniserv{'root'}/version");
 local $version = <VERSION>;
 close(VERSION);
 $version =~ s/\r|\n//g;
+my $release_version = "";
+# Usermin minor version
+if ($inc_release_version) {
+	my $usermin_version_release = read_file_contents("$miniserv{'root'}/release") || "";
+	$usermin_version_release =~ s/\r|\n//g;
+	$release_version = "-".$usermin_version_release
+	    if ($usermin_version_release > 1);
+	}
+
 # Format dev version nicely
 if ($ui_format_dev && length($version) == 13) {
-	return substr($version, 0, 5) . "." . substr($version, 5, 5 - 1) . "." . substr($version, 5 * 2 - 1);
+	return substr($version, 0, 5) . "." . substr($version, 5, 5 - 1) . "." . substr($version, 5 * 2 - 1) . $release_version;
 	}
 else {
-	return $version;
+	return $version . $release_version;
 	}
 }
 
@@ -454,7 +463,7 @@ if ($type eq 'rpm' && $file =~ /\.rpm$/i &&
 		return $text{'install_erpm'};
 		}
 	$redirect_to = $name = $2;
-	$out = &backquote_logged("rpm -U \"$file\" 2>&1");
+	$out = &backquote_logged("rpm -Uv \"$file\" 2>&1");
 	if ($?) {
 		unlink($file) if ($need_unlink);
 		return &text('install_eirpm', "<tt>$out</tt>");
@@ -855,22 +864,12 @@ sub flush_modules_cache
 
 =head2 stop_usermin
 
-Kills the running Usermin server process, returning undef on success or an
-error message on failure.
+Kills the running Usermin server process. Return value is always undef.
 
 =cut
 sub stop_usermin
 {
-local %miniserv;
-&get_usermin_miniserv_config(\%miniserv);
-local $pid;
-if (open(PID, "<".$miniserv{'pidfile'}) && ($pid = int(<PID>))) {
-	&kill_logged('TERM', $pid) || return &text('stop_ekill', $!);
-	close(PID);
-	}
-else {
-	return $text{'stop_efile'};
-	}
+&system_logged("$config{'usermin_dir'}/stop >/dev/null 2>&1 </dev/null");
 return undef;
 }
 
@@ -954,7 +953,7 @@ my $cookie = "$sidname=$sid; path=/$sec";
 
 # Work out redirect host
 my @sockets = &webmin::get_miniserv_sockets(\%miniserv);
-my ($host, $port);
+my ($host, $port, $url);
 my %uconfig;
 &get_usermin_config(\%uconfig);
 if ($uconfig{'host'}) {
@@ -974,8 +973,10 @@ else {
 		}
 	}
 $port ||= $uconfig{'port'} || $miniserv{'port'};
-
-return ($cookie, ($ssl ? "https://" : "http://").$host.":".$port."/");
+$url = ($ssl ? "https://" : "http://").$host.":".$port."/";
+$url = $miniserv{'redirect_url'}
+    if ($miniserv{'redirect_url'});
+return ($cookie, $url);
 }
 
 =head2 get_usermin_email_url([module], [cgi], [force-default], [force-host])

@@ -52,22 +52,13 @@ print &ui_table_row($text{'mail_control'},
 
 print &ui_table_hr();
 
-# Check interval
-$check = &find_value("mailbox_check_interval", $conf);
-print &ui_table_row($text{'mail_check'},
-	&ui_radio("check", $check eq '' ? 0 : $check == 0 ? 1 : 2,
-		  [ [ 1, $text{'mail_never'} ],
-		    [ 2, &ui_textbox("checki", $check ? $check : "", 10).
-			 " ".$text{'mail_secs'} ],
-		    [ 0, &getdef("mailbox_check_interval",
-				 [ [ 0, $text{'mail_never'} ] ]) ] ]), 3);
-
 # Idle interval
 $idle = &find_value("mailbox_idle_check_interval", $conf);
+$idle_never = $idle =~ /520\s+weeks/;
 print &ui_table_row($text{'mail_idle'},
-	&ui_radio("idle", $idle eq '' ? 0 : $idle == 0 ? 1 : 2,
+	&ui_radio("idle", $idle eq '' ? 0 : $idle_never ? 1 : 2,
 		  [ [ 1, $text{'mail_never'} ],
-		    [ 2, &ui_textbox("idlei", $idle ? $idle : "", 10).
+		    [ 2, &ui_textbox("idlei", $idle && !$idle_never ? int($idle) : "", 10).
 			 " ".$text{'mail_secs'} ],
 		    [ 0, &getdef("mailbox_idle_check_interval",
 				 [ [ 0, $text{'mail_never'} ] ]) ] ]), 3);

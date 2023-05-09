@@ -3,9 +3,6 @@ index_refreshmsg=Vuelva a verificar todos los módulos de Webmin para los servid
 
 access_ip=Direcciones IP permitidas
 access_local=Incluir red local en la lista
-access_elibwrap=El control de acceso IP mediante TCP-wrappers no está disponible, ya que el módulo Perl $1 no está instalado.
-access_libwrapcpan=<a href='$1'>Haga clic aquí</a> para que Webmin instale automáticamente el módulo Perl que falta.
-
 access_eip6='$1' no es una dirección de red o IPv6 completa
 access_ecidr6='$1' no es un tamaño de red IPv6 válido
 access_ecidr8=El tamaño de la red IPv6 '$1' debe ser divisible por 8
@@ -24,6 +21,10 @@ bind_maxconns_per_net=Número máximo de conexiones simultáneas por red
 bind_emaxconns=El número máximo de conexiones simultáneas debe ser mayor que 1
 bind_emaxconns_per_ip=El número máximo de conexiones simultáneas por IP debe ser mayor que 1
 bind_emaxconns_per_net=El número máximo de conexiones simultáneas por red debe ser superior a 1
+bind_maxlifetime=Vida útil máxima del proceso de Webmin
+bind_maxlifetime_def=Ilimitado
+bind_maxlifetime_secs=segundos
+bind_emaxlifetime=La vida útil máxima del proceso debe ser un número superior a 60 segundos
 
 log_status=¿Registro activo?
 log_clear2=Periódicamente borrar archivos de registro?
@@ -71,11 +72,6 @@ ui_edbwidth=Ancho de ventana del selector que falta o no es válido
 ui_edbheight=Altura de ventana del selector faltante o no válida
 ui_showlogin=¿Anteponer nombre de usuario a títulos de página?
 ui_showhost=¿Anteponer el nombre de host a los títulos de las páginas?
-ui_dateformat=Formato para fechas mostradas
-ui_dateformat_dd/mon/yyyy=dd/lun/aaaa (es decir, 16/sep/2001)
-ui_dateformat_dd/mm/yyyy=dd/mm/aaaa (es decir, 16/09/2001)
-ui_dateformat_mm/dd/yyyy=mm/dd/aaaa (es decir, 16/09/2001)
-ui_dateformat_yyyy/mm/dd=aaaa/mm/dd (es decir, 2001/09/16)
 ui_ehostnamedisplay=Nombre de host de visualización faltante o no válido
 
 mods_installsource=Instalar desde
@@ -100,12 +96,21 @@ os_perllib=Rutas adicionales de la biblioteca Perl
 os_eversion=Falta la versión del sistema operativo
 os_eiversion=Falta la versión interna del sistema operativo
 os_incorrect=El sistema operativo $1 se ha actualizado a la versión $2 
+os_release_notes=Notas de lanzamiento
 os_fix=Actualizar sistema operativo detectado
 os_usermin=También actualice Usermin OS
+
+lang_title=Idioma y configuración regional
+lang_title2=Idioma y configuración regional de Webmin
+lang_lang=Idioma
+lang_locale=Lugar
+lang_dateformat=Formato de visualización de fechas
+lang_dateformat_dd/mon/yyyy=dd/mon/aaaa (es decir, 16/sep/2001)
 
 ssl_deny=Versiones de protocolo SSL para rechazar
 ssl_compression=¿Permitir conexiones SSL comprimidas?
 ssl_honorcipherorder=¿Forzar el uso del orden de cifrado definido por el servidor?
+ssl_hsts=Hacer cumplir SSL con el encabezado HSTS
 ssl_extracasdef=Igual que la configuración global de SSL
 ssl_extracasnone=Ninguno para esta dirección IP
 ssl_extracasbelow=Entró a continuación ..
@@ -154,6 +159,7 @@ ssl_already2=Solicitud de firma de certificado generada previamente :
 ssl_letsdesc=Let's Encrypt es una autoridad de certificación gratuita, automatizada y abierta que se puede usar para generar un certificado SSL para uso de Webmin.
 ssl_letserr=Desafortunadamente, Let's Encrypt no se puede usar en su sistema: $1.
 ssl_letserr2=Alternativamente, revise la página de <a href='$1'>configuración del módulo</a> para asegurarse de que está utilizando la ruta correcta al comando <tt>letsencrypt</tt>.
+
 ssl_letsdesc2=Esta página se puede usar para solicitar un nuevo certificado, que sobrescribirá cualquier otro que haya configurado actualmente en Webmin. Sin embargo, el servicio Let's Encrypt requiere que su propiedad del dominio del certificado sea validada verificando que este sistema aloje el sitio web para el dominio. Esto se hace colocando un pequeño archivo temporal en el directorio de documentos del sitio web.
 ssl_letsheader=Opciones para el nuevo certificado SSL
 ssl_letsdoms=Nombres de host para el certificado
@@ -185,7 +191,10 @@ startpage_moduleup=¿Mostrar actualizaciones de módulos en la página de inform
 
 upgrade_descdeb=Este formulario le permite actualizar toda su instalación de Webmin a una nueva versión actualizando su paquete Debian. Puede instalar desde un archivo.deb local, un archivo cargado o desde la última versión en <a href=http://www.webmin.com/>www.webmin.com</a>. Al igual que con una actualización manual, se mantendrán todos sus ajustes de configuración y módulos de terceros.
 upgrade_edeb=No es un archivo de paquete Webmin Debian válido
-upgrade_setupdeb=Ejecutar DPKG para actualizar Webmin. Espere un minuto hasta que se complete antes de continuar.
+upgrade_setup=Ejecutando el script <tt>setup.sh</tt> para actualizar Webmin ..
+upgrade_setuprpm=Ejecutando <tt>RPM</tt> para actualizar Webmin ..
+upgrade_setupdeb=Ejecutando <tt>DPKG</tt> para actualizar Webmin ..
+upgrade_setuppackage=Ejecutando <tt>pkgadd</tt> para actualizar Webmin ..
 upgrade_ezip=La función de actualización de Webmin no funciona actualmente cuando la ha instalado en Windows. Actualice manualmente en su lugar.
 upgrade_eportage=La función de actualización de Webmin no funciona actualmente cuando se ha instalado desde un paquete de Portage. Actualice utilizando las herramientas de Portage en su lugar.
 upgrade_tabupgrade=Actualizar Webmin
@@ -235,9 +244,13 @@ session_ecmd=Comando de cambio de contraseña faltante o no válido
 session_banner=Banner previo al inicio de sesión
 session_pmodedesc3=Política de caducidad de contraseña
 session_md5=Formato de hash de contraseña de Webmin
-session_sha512=Utilice el cifrado SHA512
-session_emd5mod=El cifrado MD5 no se puede utilizar, ya que el módulo Perl $1 no está instalado.
-session_esha512mod=El cifrado SHA512 no se puede utilizar, ya que el módulo Perl $1 no está instalado.
+session_md5off=Determinar automáticamente
+session_md5on=Utilice el formato hash <tt>MD5</tt>
+session_sha512=Utilice el formato hash <tt>SHA512</tt>
+session_yescrypt=Utilice el formato hash <tt>yescrypt</tt>
+session_emd5mod=No se puede usar el formato hash MD5, ya que el módulo Perl $1 no está instalado
+session_esha512mod=No se puede usar el formato hash SHA512, ya que el módulo Perl $1 no está instalado
+session_eyescrypt=No se puede usar el formato hash yescrypt, ya que el módulo Perl $1 no está instalado
 session_blocklock=También bloquea usuarios con inicios de sesión fallidos
 session_passapi=¿Habilitar API de cambio de contraseña remota?
 session_passapi0=API deshabilitada
@@ -315,6 +328,7 @@ advanced_precache1=Archivos de texto en inglés
 advanced_precache2=Archivos que coinciden con patrones de shell $1
 advanced_eprecache=Falta la lista de patrones de shell para pre-cachear
 advanced_etdir=Directorio de archivos temporales faltantes o inexistentes para $1
+advanced_etempallowed=El directorio de archivos temporales $1 es un directorio del sistema
 advanced_pass=¿Hacer que la contraseña esté disponible para los programas de Webmin? <br><font size=-1> (No funciona cuando la autenticación de sesión está habilitada) </font>
 advanced_tempmods=Directorios temporales por módulo
 advanced_tmod=Módulo
@@ -518,6 +532,16 @@ web_expirespaths=Tiempos de caché del lado del cliente basados en la ruta URL
 web_expirespath=Expresión regular de ruta
 web_expirestime=Tiempo de caché en segundos
 web_eexpires2=Tiempo de caché del lado del cliente faltante o no numérico en la fila $1
+web_rediruurl=URL de redirección del cambio posterior al inicio de sesión
+web_redirdesc=Anulaciones de URL de redireccionamiento interno
+web_eredirurl='$1' contiene espacios y no es una URL válida
+web_redirhost=Redirigir host
+web_eredirhost='$1' no es un nombre de host válido
+web_redirport=Puerto de redirección
+web_redirpref=Prefijo de redirección
+web_eredirpref=El prefijo debe comenzar con una barra diagonal
+web_eredirpref2=El prefijo no debe contener espacios
+web_redirssl=Redirigir SSL
 
 webmincron_title=Funciones programadas de Webmin
 webmincron_emodule=¡El módulo Webmin Cron Jobs no está instalado!

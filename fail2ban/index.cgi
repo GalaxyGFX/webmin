@@ -3,6 +3,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 require './fail2ban-lib.pl';
 our (%in, %text, %config, $module_name, $module_root_directory);
 
@@ -28,14 +30,14 @@ if ($err) {
 
 # Show category icons
 my @links = ( "list_filters.cgi", "list_actions.cgi",
-	      "list_jails.cgi", "edit_config.cgi",
-	      "edit_manual.cgi", );
+	      "list_jails.cgi", "list_status.cgi",
+	      "edit_config.cgi", "edit_manual.cgi", );
 my @titles = ( $text{'filters_title'}, $text{'actions_title'},
-	       $text{'jails_title'}, $text{'config_title'},
-	       $text{'manual_title'}, );
+	       $text{'jails_title'}, $text{'status_title'},
+	       $text{'config_title'}, $text{'manual_title'}, );
 my @icons = ( "images/filters.gif", "images/actions.gif",
-	      "images/jails.gif", "images/config.gif",
-	      "images/manual.gif", );
+	      "images/jails.gif", "images/status.gif",
+	      "images/config.gif", "images/manual.gif", );
 &icons_table(\@links, \@titles, \@icons, 5);
 
 # Show start / stop buttons

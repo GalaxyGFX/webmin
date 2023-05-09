@@ -2,6 +2,8 @@
 
 use strict;
 use warnings;
+no warnings 'redefine';
+no warnings 'uninitialized';
 our %config;
 
 # check_md5()
@@ -136,7 +138,10 @@ return $r;
 sub check_sha1
 {
 eval "use Digest::SHA1";
-return $@ ? "Digest::SHA1" : undef;
+return undef if (!$@);
+eval "use Digest::SHA";
+return undef if (!$@);
+return "Digest::SHA";
 }
 
 # encrypt_sha1(password)
@@ -145,6 +150,9 @@ sub encrypt_sha1
 {
 my ($pass) = @_;
 my $sh = eval "use Digest::SHA1 qw(sha1_base64);return sha1_base64(\$pass);";
+if ($@) {
+	$sh = eval "use Digest::SHA qw(sha1_base64);return sha1_base64(\$pass);";
+	}
 return "{SHA}$sh=";
 }
 
@@ -205,11 +213,36 @@ return &unix_crypt_supports_sha512() ? undef : 'Crypt::SHA';
 }
 
 # encrypt_sha512(password, [salt])
-# Hashes a password, possibly with the give salt, with SHA512
+# Hashes a password, possibly with the given salt, with SHA512
 sub encrypt_sha512
 {
 my ($passwd, $salt) = @_;
 $salt ||= '$6$'.substr(time(), -8).'$';
+return crypt($passwd, $salt);
+}
+
+# unix_crypt_supports_yescrypt()
+# Returns 1 if the built-in crypt() function can already do yescrypt
+sub unix_crypt_supports_yescrypt
+{
+my $hash = '$y$j9T$waHytoaqP/CEnKFroGn0S/$fxd5mVc2mBPUc3vv.cpqDckpwrWTyIm2iD4JfnVBi26';
+my $newhash = eval { crypt('test', $hash) };
+return $newhash eq $hash;
+}
+
+# check_yescrypt()
+# Returns undef if yescrypt hashing is supported, or an error message if not
+sub check_yescrypt
+{
+return &unix_crypt_supports_yescrypt() ? undef : 'Crypt::NaCl::Sodium';
+}
+
+# encrypt_yescrypt(password, [salt])
+# Hashes a password, possibly with the given salt, with yescrypt
+sub encrypt_yescrypt
+{
+my ($passwd, $salt) = @_;
+$salt ||= &substitute_pattern('$y$j9T$[A-Z]{4}.[a-zA-Z0-9]{16}.$[a-zA-Z0-9]{14}.[a-zA-Z0-9]{7}/[a-zA-Z0-9]{15}/[a-zA-Z0-9]{4}');
 return crypt($passwd, $salt);
 }
 
@@ -239,9 +272,15 @@ if (!&check_blowfish()) {
 	return 1 if ($mhash eq $hash);
 	}
 
-# SHA1
+# SHA512
 if (!&check_sha512()) {
 	my $shash = &encrypt_sha512($passwd, $hash);
+	return 1 if ($shash && $shash eq $hash);
+	}
+
+# yescrypt
+if (!&check_yescrypt()) {
+	my $shash = &encrypt_yescrypt($passwd, $hash);
 	return 1 if ($shash && $shash eq $hash);
 	}
 
